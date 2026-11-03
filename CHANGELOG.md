@@ -1,3 +1,17 @@
+# 1.3.0 (2026-11-03)
+
+### Features
+
+* Open TapOut from a camera scan of the printed QR code. The code encodes `tagout://TAGOUT_TOGGLE`, and Scan QR Code on the home screen reads the same payload.
+* Place Display QR Code inside the Enable QR Code controls setting.
+* Add a printable copy of the code to the README.
+
+### Bug Fixes
+
+* Publish the new session, including the attempt count and start time, before the home screen resumes after that scan.
+
+Older printed `TAPBLOK_TOGGLE` codes no longer match. QR controls still have to be turned on in Settings.
+
 # 1.2.1 (2026-10-30)
 
 ### Bug Fixes
