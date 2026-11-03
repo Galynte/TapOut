@@ -1,3 +1,11 @@
+# 1.3.1 (2026-11-03)
+
+### Bug Fixes
+
+* The printable QR code in the README is the same symbol Display QR Code draws.
+* QR code controls stay locked while a session is running. Settings says to stop monitoring before changing them.
+* Refresh the README settings pictures, including the locked controls and the Display QR Code screen.
+
 # 1.3.0 (2026-11-03)
 
 ### Features
