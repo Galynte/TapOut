@@ -1,3 +1,9 @@
+# Unreleased
+
+### Bug Fixes
+
+* Drop the gray card around QR code controls. Display QR Code stays indented under the switch.
+
 # 1.3.1 (2026-11-03)
 
 ### Bug Fixes
