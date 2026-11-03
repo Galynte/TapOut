@@ -22,6 +22,8 @@ package com.galynte.tapblok
 import android.app.AppOpsManager
 import android.app.Service
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Process
 
 // A helper function to check if the monitoring service is currently running.
@@ -33,6 +35,26 @@ fun isServiceRunning(context: Context, serviceClass: Class<out Service>): Boolea
     // serviceClass param is unused but kept for source compatibility with existing call sites.
     val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
     return prefs.getBoolean("is_monitoring_active", false)
+}
+
+enum class MonitoringToggle {
+    Started,
+    Stopped
+}
+
+/** Starts monitoring when it is off, and stops it when it is on. */
+fun toggleMonitoring(context: Context): MonitoringToggle {
+    val serviceIntent = Intent(context, AppMonitoringService::class.java)
+    return if (isServiceRunning(context, AppMonitoringService::class.java)) {
+        context.stopService(serviceIntent)
+        MonitoringToggle.Stopped
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(serviceIntent)
+        MonitoringToggle.Started
+    } else {
+        context.startService(serviceIntent)
+        MonitoringToggle.Started
+    }
 }
 
 fun hasUsageStatsPermission(context: Context): Boolean {

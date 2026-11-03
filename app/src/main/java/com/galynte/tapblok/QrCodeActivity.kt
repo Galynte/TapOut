@@ -42,14 +42,14 @@ import com.galynte.tapblok.ui.theme.TapOutTheme
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class QrCodeActivity : ComponentActivity() {
 
     companion object {
-        // Existing printed codes for this Play listing use this payload.
-        const val QR_CODE_CONTENT = "TAPBLOK_TOGGLE"
+        const val QR_CODE_CONTENT = QrToggle.CONTENT
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,7 +99,7 @@ fun QrCodeScreen(modifier: Modifier = Modifier, content: String) {
         }
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "Scan this code to start or stop a monitoring session.",
+            text = "Scan this with your phone's camera to start or stop a monitoring session.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center
         )
@@ -109,7 +109,10 @@ fun QrCodeScreen(modifier: Modifier = Modifier, content: String) {
 private fun generateQrCode(content: String): Bitmap? {
     val writer = QRCodeWriter()
     return try {
-        val hints = mapOf(EncodeHintType.MARGIN to 1)
+        val hints = mapOf(
+            EncodeHintType.MARGIN to 2,
+            EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M
+        )
         val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, 512, 512, hints)
         val width = bitMatrix.width
         val height = bitMatrix.height
