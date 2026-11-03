@@ -151,7 +151,7 @@ fun SettingsScreen(
                     ListItem(
                         headlineContent = { Text("Enable QR Code controls") },
                         supportingContent = {
-                            Text("Lets the phone camera open TapOut from your printed code, and shows Scan QR Code on the home screen")
+                            Text("Displays Scan QR Code button on the main screen")
                         },
                         trailingContent = {
                             Switch(
