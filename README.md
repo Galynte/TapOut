@@ -19,7 +19,11 @@ The app is Kotlin, with Jetpack Compose for the UI, Room for on-device storage, 
 
 | Settings | Blocked app |
 | :------: | :---------: |
-| <img width="270" alt="Settings" src="docs/assets/images/app_settings.png" /> | <img width="270" alt="Blocked app screen" src="docs/assets/images/app_blocked.png" /> |
+| <img width="270" alt="Settings with QR code controls on" src="docs/assets/images/app_settings.png" /> | <img width="270" alt="Blocked app screen" src="docs/assets/images/app_blocked.png" /> |
+
+| Settings during a session | Your QR code |
+| :-----------------------: | :----------: |
+| <img width="270" alt="Settings while monitoring, with QR controls locked" src="docs/assets/images/app_settings_monitoring.png" /> | <img width="270" alt="Display QR Code screen" src="docs/assets/images/app_qr_code.png" /> |
 
 ## What it does
 
@@ -46,7 +50,7 @@ The app is Kotlin, with Jetpack Compose for the UI, Room for on-device storage, 
 
 ## Printable QR code
 
-Turn on **Enable QR Code controls** in Settings, then print this image. It encodes `tagout://TAGOUT_TOGGLE`. A camera that passes that link to Android opens TapOut and toggles the session. The same code is on the Display QR Code screen, and Scan QR Code on the home screen reads it as well.
+Turn on **Enable QR Code controls** in Settings, then print this image. It encodes `tagout://TAGOUT_TOGGLE`. A camera that passes that link to Android opens TapOut and toggles the session. The Display QR Code screen above draws this same image, and Scan QR Code on the home screen reads it as well.
 
 <img alt="Printable TapOut QR code that toggles a session" width="280" src="docs/assets/images/tagout-toggle-qr.png" />
 
