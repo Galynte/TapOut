@@ -27,8 +27,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -39,8 +38,6 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.set
 import com.galynte.tapblok.ui.components.TapOutScaffold
 import com.galynte.tapblok.ui.theme.TapOutTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 class QrCodeActivity : ComponentActivity() {
 
@@ -68,11 +65,7 @@ class QrCodeActivity : ComponentActivity() {
 
 @Composable
 fun QrCodeScreen(modifier: Modifier = Modifier, content: String) {
-    val qrBitmap by produceState<Bitmap?>(initialValue = null, producer = {
-        value = withContext(Dispatchers.Default) {
-            generateQrCode(content)
-        }
-    })
+    val qrBitmap = remember(content) { generateQrCode(content) }
 
     Column(
         modifier = modifier
@@ -83,7 +76,7 @@ fun QrCodeScreen(modifier: Modifier = Modifier, content: String) {
     ) {
         if (qrBitmap != null) {
             Image(
-                bitmap = qrBitmap!!.asImageBitmap(),
+                bitmap = qrBitmap.asImageBitmap(),
                 contentDescription = "QR Code",
                 modifier = Modifier
                     .fillMaxWidth()

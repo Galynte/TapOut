@@ -28,15 +28,23 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
 import android.os.Process
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
+import com.galynte.tapblok.ui.components.TapOutScaffold
 import com.galynte.tapblok.ui.theme.TapOutTheme
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.RoborazziTaskType
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -97,22 +105,66 @@ class ReadmeScreenshotTest {
     fun settings() {
         composeRule.setContent {
             TapOutTheme {
-                SettingsScreen(
-                    onBackClick = {},
-                    isMonitoringActive = false,
-                    enableQrCode = false,
-                    breakDurationMinutes = 0,
-                    monitoringDurationMinutes = 0,
-                    onEnableQrCodeChanged = {},
-                    onBreakOptionChanged = {},
-                    onMonitoringDurationChanged = {},
-                    onWriteNfcTagClick = {},
-                    onShowQrCodeClick = {},
-                    onEditPermissionsClick = {}
-                )
+                settingsScreen(monitoring = false, enableQrCode = true)
             }
         }
+        composeRule.onNodeWithText("Display QR Code").assertIsDisplayed()
         composeRule.onRoot().save("app_settings.png")
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h1000dp-420dpi")
+    fun settingsWhileMonitoring() {
+        composeRule.setContent {
+            TapOutTheme {
+                settingsScreen(monitoring = true, enableQrCode = true)
+            }
+        }
+        composeRule.onNodeWithText("Stop monitoring to change QR code controls").assertIsDisplayed()
+        composeRule.onNodeWithText("Stop monitoring to change session duration").assertIsDisplayed()
+        composeRule.onNodeWithText("Stop monitoring to change break settings").assertIsDisplayed()
+        composeRule.onNodeWithText("Display QR Code").assertIsDisplayed()
+        composeRule.onNodeWithText("Open Source Licenses").assertIsDisplayed()
+        composeRule.onRoot().save("app_settings_monitoring.png")
+    }
+
+    @Test
+    fun displayQrCode() {
+        composeRule.setContent {
+            TapOutTheme {
+                TapOutScaffold(
+                    title = "Your QR Code",
+                    onBackClick = {}
+                ) { padding ->
+                    QrCodeScreen(
+                        modifier = Modifier.padding(padding),
+                        content = QrCodeActivity.QR_CODE_CONTENT
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("QR Code").assertIsDisplayed()
+        val shot = shot("app_qr_code.png")
+        composeRule.onRoot().save("app_qr_code.png")
+        assertSameQrSymbol(shot, printableQr())
+    }
+
+    @Composable
+    private fun settingsScreen(monitoring: Boolean, enableQrCode: Boolean) {
+        SettingsScreen(
+            onBackClick = {},
+            isMonitoringActive = monitoring,
+            enableQrCode = enableQrCode,
+            breakDurationMinutes = 0,
+            monitoringDurationMinutes = 0,
+            onEnableQrCodeChanged = {},
+            onBreakOptionChanged = {},
+            onMonitoringDurationChanged = {},
+            onWriteNfcTagClick = {},
+            onShowQrCodeClick = {},
+            onEditPermissionsClick = {}
+        )
     }
 
     @Test
@@ -145,6 +197,76 @@ class ReadmeScreenshotTest {
 
     private fun shot(name: String) = java.io.File("build/screenshots", name).apply {
         parentFile?.mkdirs()
+    }
+
+    private fun printableQr(): java.io.File = listOf(
+        java.io.File("docs/assets/images/tagout-toggle-qr.png"),
+        java.io.File("../docs/assets/images/tagout-toggle-qr.png")
+    ).firstOrNull { it.isFile } ?: error("Printable QR image is missing from the repo")
+
+    /** Module centers of the on-screen code match the README image. */
+    private fun assertSameQrSymbol(screenshot: java.io.File, printable: java.io.File) {
+        val screen = javax.imageio.ImageIO.read(screenshot)
+        val readme = javax.imageio.ImageIO.read(printable)
+        var minX = screen.width
+        var minY = screen.height
+        var maxX = 0
+        var maxY = 0
+        for (y in 0 until screen.height) {
+            for (x in 0 until screen.width) {
+                val pixel = screen.getRGB(x, y) and 0xFFFFFF
+                if (pixel == 0xFFFFFF || pixel == 0x000000) {
+                    if (x < minX) minX = x
+                    if (y < minY) minY = y
+                    if (x > maxX) maxX = x
+                    if (y > maxY) maxY = y
+                }
+            }
+        }
+        val symbol = darkBounds(readme)
+        val module = finderModule(readme, symbol[0], symbol[1])
+        val modules = Math.round((symbol[2] - symbol[0] + 1) / module.toFloat())
+        val screenWidth = maxX - minX + 1
+        val screenHeight = maxY - minY + 1
+        var diffs = 0
+        for (moduleY in 0 until modules) {
+            for (moduleX in 0 until modules) {
+                val readmeX = symbol[0] + moduleX * module + module / 2
+                val readmeY = symbol[1] + moduleY * module + module / 2
+                val screenX = minX + readmeX * screenWidth / readme.width
+                val screenY = minY + readmeY * screenHeight / readme.height
+                val readmeDark = (readme.getRGB(readmeX, readmeY) and 0xFFFFFF) == 0
+                val screenDark = (screen.getRGB(screenX, screenY) and 0xFFFFFF) == 0
+                if (readmeDark != screenDark) diffs++
+            }
+        }
+        assertEquals(0, diffs)
+    }
+
+    private fun darkBounds(image: java.awt.image.BufferedImage): IntArray {
+        var minX = image.width
+        var minY = image.height
+        var maxX = 0
+        var maxY = 0
+        for (y in 0 until image.height) {
+            for (x in 0 until image.width) {
+                if ((image.getRGB(x, y) and 0xFFFFFF) == 0) {
+                    if (x < minX) minX = x
+                    if (y < minY) minY = y
+                    if (x > maxX) maxX = x
+                    if (y > maxY) maxY = y
+                }
+            }
+        }
+        return intArrayOf(minX, minY, maxX, maxY)
+    }
+
+    private fun finderModule(image: java.awt.image.BufferedImage, x: Int, y: Int): Int {
+        var run = 0
+        while (x + run < image.width && (image.getRGB(x + run, y) and 0xFFFFFF) == 0) {
+            run++
+        }
+        return (run / 7).coerceAtLeast(1)
     }
 
     private fun notesIcon(context: Context): BitmapDrawable {
