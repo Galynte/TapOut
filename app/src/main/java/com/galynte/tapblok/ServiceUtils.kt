@@ -23,18 +23,21 @@ import android.app.AppOpsManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.Process
 
-// A helper function to check if the monitoring service is currently running.
-// The implementation uses a SharedPreferences flag that the service itself manages
-// on start/stop (via onStartCommand / onDestroy). This avoids the deprecated
-// ActivityManager.getRunningServices() API while keeping the exact same call sites
-// and signature for minimal diff.
+private const val PREFS_NAME = "app_prefs"
+private const val PREF_MONITORING_ACTIVE = "is_monitoring_active"
+
+// Tracks the monitoring session without ActivityManager.getRunningServices().
+// toggleMonitoring publishes the new value before it returns. The service writes
+// the same flag again from onStartCommand and onDestroy, including starts and
+// stops that do not go through toggleMonitoring, but those callbacks run only
+// after startForegroundService and stopService have already returned.
 fun isServiceRunning(context: Context, serviceClass: Class<out Service>): Boolean {
     // serviceClass param is unused but kept for source compatibility with existing call sites.
-    val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-    return prefs.getBoolean("is_monitoring_active", false)
+    return monitoringPrefs(context).getBoolean(PREF_MONITORING_ACTIVE, false)
 }
 
 enum class MonitoringToggle {
@@ -42,10 +45,17 @@ enum class MonitoringToggle {
     Stopped
 }
 
-/** Starts monitoring when it is off, and stops it when it is on. */
+/**
+ * Starts monitoring when it is off, and stops it when it is on.
+ *
+ * The session flag is committed before this returns. [QrLinkActivity] opens the
+ * home screen immediately, and that screen reads [isServiceRunning] on resume.
+ * Waiting for [AppMonitoringService] to write the flag would show the previous
+ * session, so the next scan would toggle the opposite way.
+ */
 fun toggleMonitoring(context: Context): MonitoringToggle {
     val serviceIntent = Intent(context, AppMonitoringService::class.java)
-    return if (isServiceRunning(context, AppMonitoringService::class.java)) {
+    val outcome = if (isServiceRunning(context, AppMonitoringService::class.java)) {
         context.stopService(serviceIntent)
         MonitoringToggle.Stopped
     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -55,6 +65,15 @@ fun toggleMonitoring(context: Context): MonitoringToggle {
         context.startService(serviceIntent)
         MonitoringToggle.Started
     }
+    // Durable before QrLinkActivity finishes and the home screen reads it.
+    monitoringPrefs(context).edit()
+        .putBoolean(PREF_MONITORING_ACTIVE, outcome == MonitoringToggle.Started)
+        .commit()
+    return outcome
+}
+
+private fun monitoringPrefs(context: Context): SharedPreferences {
+    return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 }
 
 fun hasUsageStatsPermission(context: Context): Boolean {
