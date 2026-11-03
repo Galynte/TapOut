@@ -63,8 +63,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private const val PREF_ENABLE_QR_CODE = "enable_qr_code"
-
 private const val EMERGENCY_HOLD_DURATION_MS = 30_000L
 private const val EMERGENCY_HOLD_SECONDS = 30
 
@@ -86,7 +84,7 @@ fun MainScreen() {
         )
     }
     val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-    var enableQrCode by remember { mutableStateOf(prefs.getBoolean(PREF_ENABLE_QR_CODE, false)) }
+    var enableQrCode by remember { mutableStateOf(prefs.getBoolean(QrToggle.PREF_ENABLED, false)) }
 
     var holdProgress by remember { mutableStateOf(0f) }
     var isHolding by remember { mutableStateOf(false) }
@@ -111,21 +109,15 @@ fun MainScreen() {
     val qrCodeScannerLauncher = rememberLauncherForActivityResult(
         contract = ScanContract()
     ) { result ->
-        if (result.contents == QrCodeActivity.QR_CODE_CONTENT) {
-            val serviceIntent = Intent(context, AppMonitoringService::class.java)
-            if (isServiceRunning) {
-                context.stopService(serviceIntent)
-                Toast.makeText(context, "Monitoring stopped.", Toast.LENGTH_SHORT).show()
-                isServiceRunning = false
+        if (QrToggle.matches(result.contents)) {
+            val toggle = toggleMonitoring(context)
+            isServiceRunning = toggle == MonitoringToggle.Started
+            val message = if (toggle == MonitoringToggle.Started) {
+                "Monitoring started."
             } else {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
-                }
-                Toast.makeText(context, "Monitoring started.", Toast.LENGTH_SHORT).show()
-                isServiceRunning = true
+                "Monitoring stopped."
             }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         } else if (result.contents != null) {
             Toast.makeText(context, "Incorrect QR Code", Toast.LENGTH_SHORT).show()
         }
@@ -141,7 +133,7 @@ fun MainScreen() {
                     context,
                     Manifest.permission.CAMERA
                 ) == PackageManager.PERMISSION_GRANTED
-                enableQrCode = prefsNow.getBoolean(PREF_ENABLE_QR_CODE, false)
+                enableQrCode = prefsNow.getBoolean(QrToggle.PREF_ENABLED, false)
 
                 sessionDurationMinutes = prefsNow.getInt("monitoring_duration_minutes", 0)
                 remainingMinutes = 0  // reset by default

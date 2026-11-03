@@ -92,6 +92,27 @@
             android:label="@string/title_activity_qr_code"
             android:theme="@style/Theme.TapOut" />
 
+        <!-- Camera apps dispatch tagout://TAGOUT_TOGGLE as a VIEW intent. -->
+        <activity
+            android:name=".QrLinkActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="tagout"
+                    android:host="tagout_toggle" />
+                <data
+                    android:scheme="tagout"
+                    android:host="TAGOUT_TOGGLE" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"
             android:screenOrientation="portrait"

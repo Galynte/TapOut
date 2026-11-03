@@ -25,7 +25,7 @@ The app is Kotlin, with Jetpack Compose for the UI, Room for on-device storage, 
 
 * **App selection.** Choose any launchable app to block. Dialer, SMS, Settings, and launchers stay off the list so the phone cannot be locked out of essentials.
 * **Select all / clear all.** The app list can be filled or emptied in one step.
-* **Session control.** Start or stop a session from the home screen, an NFC tag (including common NTAG215 tags), a QR code, or the "Start Session" shortcut on the app icon.
+* **Session control.** Start or stop a session from the home screen, an NFC tag (including common NTAG215 tags), a QR code scanned with the phone camera or in the app, or the "Start Session" shortcut on the app icon.
 * **Automatic timeout.** Settings can end a session after 15, 30, or 60 minutes without a scan or the emergency hold.
 * **Emergency override.** During a session, holding the stop control for 30 seconds ends it if the tag or QR code is missing.
 * **Blocking screen.** Opening a blocked app shows a cover screen. Back goes home, which closes a common bypass.
@@ -42,7 +42,13 @@ The app is Kotlin, with Jetpack Compose for the UI, Room for on-device storage, 
 * **UI.** `MainActivity` is the home screen. `AppSelectionActivity` is the block list. `SettingsActivity` holds session options. `PrivacyExplanationActivity` runs once, before the home screen.
 * **Storage.** Room stores `BlockedApp` rows (package name only). `BlockedAppDao` inserts, deletes, and lists them.
 * **Monitoring.** `AppMonitoringService` is a sticky foreground service. About once a second it compares the foreground package with the block list and, on a match, opens `BlockingActivity`.
-* **NFC and QR.** `NfcWriteActivity` writes a custom MIME type to a tag. `NfcHandlerActivity` reads that tag and toggles monitoring. `QrCodeActivity` shows the code the home screen scans.
+* **NFC and QR.** `NfcWriteActivity` writes a custom MIME type to a tag. `NfcHandlerActivity` reads that tag and toggles monitoring. `QrCodeActivity` shows the printable code. `QrLinkActivity` receives `tagout://TAGOUT_TOGGLE` when a camera app opens that link and toggles monitoring. The home screen scanner accepts the same link.
+
+## Printable QR code
+
+Turn on **Enable QR Code controls** in Settings, then print this image. It encodes `tagout://TAGOUT_TOGGLE`. A camera that passes that link to Android opens TapOut and toggles the session. The same code is on the Display QR Code screen, and Scan QR Code on the home screen reads it as well.
+
+<img alt="Printable TapOut QR code that toggles a session" width="280" src="docs/assets/images/tagout-toggle-qr.png" />
 
 ## Privacy
 

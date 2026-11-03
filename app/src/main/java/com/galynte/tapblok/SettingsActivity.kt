@@ -28,12 +28,15 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import com.galynte.tapblok.ui.components.TapOutScaffold
@@ -41,7 +44,6 @@ import com.galynte.tapblok.ui.theme.TapOutTheme
 
 class SettingsActivity : ComponentActivity() {
     companion object {
-        private const val PREF_ENABLE_QR_CODE = "enable_qr_code"
         private const val PREF_BREAK_DURATION_MINUTES = "break_duration_minutes"
         private const val PREF_ENABLE_BREAKS = "enable_breaks"
         private const val PREF_MONITORING_DURATION_MINUTES = "monitoring_duration_minutes"
@@ -50,7 +52,7 @@ class SettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val isMonitoringActive = intent.getBooleanExtra("is_monitoring_active", false)
         val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
-        val currentEnableQrCode = prefs.getBoolean(PREF_ENABLE_QR_CODE, false)
+        val currentEnableQrCode = prefs.getBoolean(QrToggle.PREF_ENABLED, false)
         val currentBreakDurationMinutes = prefs.getInt(PREF_BREAK_DURATION_MINUTES, 0) // 0 = disabled
         val currentMonitoringDurationMinutes = prefs.getInt(PREF_MONITORING_DURATION_MINUTES, 0)
         setContent {
@@ -62,7 +64,7 @@ class SettingsActivity : ComponentActivity() {
                     breakDurationMinutes = currentBreakDurationMinutes,
                     monitoringDurationMinutes = currentMonitoringDurationMinutes,
                     onEnableQrCodeChanged = { enabled ->
-                        prefs.edit { putBoolean(PREF_ENABLE_QR_CODE, enabled) }
+                        prefs.edit { putBoolean(QrToggle.PREF_ENABLED, enabled) }
                     },
                     onBreakOptionChanged = { minutes ->
                         prefs.edit {
@@ -138,29 +140,56 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(onClick = onWriteNfcTagClick)
             )
             HorizontalDivider()
-            ListItem(
-                headlineContent = { Text("Enable QR Code controls") },
-                supportingContent = { Text("Displays Scan QR Code button on the main screen") },
-                trailingContent = {
-                    Switch(
-                        checked = localEnableQrCode,
-                        onCheckedChange = { isChecked ->
-                            localEnableQrCode = isChecked
-                            onEnableQrCodeChanged(isChecked)
-                        }
+            Surface(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Column {
+                    ListItem(
+                        headlineContent = { Text("Enable QR Code controls") },
+                        supportingContent = {
+                            Text("Lets the phone camera open TapOut from your printed code, and shows Scan QR Code on the home screen")
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = localEnableQrCode,
+                                onCheckedChange = { isChecked ->
+                                    localEnableQrCode = isChecked
+                                    onEnableQrCodeChanged(isChecked)
+                                }
+                            )
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                     )
+                    if (localEnableQrCode) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                        )
+                        ListItem(
+                            headlineContent = { Text("Display QR Code") },
+                            supportingContent = { Text("Printable code for the phone camera") },
+                            leadingContent = {
+                                Icon(
+                                    Icons.Filled.SubdirectoryArrowRight,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            trailingContent = {
+                                Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                            },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable(onClick = onShowQrCodeClick)
+                        )
+                    }
                 }
-            )
-            HorizontalDivider()
-            if (localEnableQrCode) {
-                ListItem(
-                    headlineContent = { Text("Display QR Code") },
-                    supportingContent = { Text("Printable version of QR Code") },
-                    trailingContent = { Icon(Icons.Filled.ChevronRight, contentDescription = null) },
-                    modifier = Modifier.clickable(onClick = onShowQrCodeClick)
-                )
-                HorizontalDivider()
             }
+            HorizontalDivider()
             ListItem(
                 headlineContent = { Text("Edit Permissions") },
                 supportingContent = { Text("Manage app permissions in system settings") },
