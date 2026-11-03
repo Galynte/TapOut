@@ -19,7 +19,9 @@
 
 package com.galynte.tapblok
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
@@ -87,6 +89,7 @@ class QrLinkDispatchTest {
         assertEquals(MainActivity::class.java.name, next?.component?.className)
         assertEquals("Monitoring stopped.", ShadowToast.getTextOfLatestToast())
         assertTrue(activity.isFinishing)
+        assertFalse(isServiceRunning(context, AppMonitoringService::class.java))
     }
 
     @Test
@@ -104,6 +107,60 @@ class QrLinkDispatchTest {
             shadowOf(activity).nextStartedActivity?.component?.className
         )
         assertEquals("Monitoring started.", ShadowToast.getTextOfLatestToast())
+        assertTrue(isServiceRunning(context, AppMonitoringService::class.java))
+    }
+
+    @Test
+    fun secondScanFollowsTheSessionCommittedByTheFirst() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        prefs(context).edit()
+            .putBoolean(QrToggle.PREF_ENABLED, true)
+            .putBoolean("is_monitoring_active", true)
+            .commit()
+
+        launch(QrToggle.CONTENT)
+        assertEquals("Monitoring stopped.", ShadowToast.getTextOfLatestToast())
+        assertFalse(isServiceRunning(context, AppMonitoringService::class.java))
+
+        launch(QrToggle.CONTENT)
+        assertEquals("Monitoring started.", ShadowToast.getTextOfLatestToast())
+        assertTrue(isServiceRunning(context, AppMonitoringService::class.java))
+    }
+
+    @Test
+    fun togglePublishesSessionBeforeServiceCallbacks() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        prefs(base).edit().putBoolean("is_monitoring_active", false).commit()
+        val context = object : ContextWrapper(base) {
+            var started = false
+            var stopped = false
+
+            override fun startForegroundService(service: Intent): ComponentName {
+                started = true
+                return ComponentName(base, AppMonitoringService::class.java)
+            }
+
+            override fun startService(service: Intent): ComponentName {
+                started = true
+                return ComponentName(base, AppMonitoringService::class.java)
+            }
+
+            override fun stopService(name: Intent): Boolean {
+                stopped = true
+                return true
+            }
+        }
+
+        assertEquals(MonitoringToggle.Started, toggleMonitoring(context))
+        assertTrue(context.started)
+        assertFalse(context.stopped)
+        assertTrue(isServiceRunning(base, AppMonitoringService::class.java))
+
+        context.started = false
+        assertEquals(MonitoringToggle.Stopped, toggleMonitoring(context))
+        assertTrue(context.stopped)
+        assertFalse(context.started)
+        assertFalse(isServiceRunning(base, AppMonitoringService::class.java))
     }
 
     @Test
