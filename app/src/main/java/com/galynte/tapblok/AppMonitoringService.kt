@@ -69,6 +69,8 @@ class AppMonitoringService : Service() {
         Log.d("AppMonitoringService", "Service has started.")
 
         val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+        // toggleMonitoring already published the flag and attempt count for the
+        // home-screen resume. Repeat them for starts that skip that helper.
         prefs.edit {
             putBoolean("is_monitoring_active", true)
             putInt("breaks_remaining", 3)
@@ -131,6 +133,7 @@ class AppMonitoringService : Service() {
 
         val durationMinutes = prefs.getInt("monitoring_duration_minutes", 0)
         if (durationMinutes > 0) {
+            // toggleMonitoring publishes this before returning when a duration is set.
             prefs.edit {
                 putLong("session_start_timestamp", System.currentTimeMillis())
                 apply()
