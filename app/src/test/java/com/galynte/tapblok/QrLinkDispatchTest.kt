@@ -128,6 +128,71 @@ class QrLinkDispatchTest {
     }
 
     @Test
+    fun startPublishesFreshSessionStatsBeforeServiceCallbacks() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        val previousStart = System.currentTimeMillis() - 20 * 60_000L
+        prefs(base).edit()
+            .putBoolean("is_monitoring_active", false)
+            .putInt("blocked_app_attempts", 7)
+            .putInt("monitoring_duration_minutes", 30)
+            .putLong("session_start_timestamp", previousStart)
+            .commit()
+        val context = serviceCallbackBlocked(base)
+
+        val before = System.currentTimeMillis()
+        assertEquals(MonitoringToggle.Started, toggleMonitoring(context))
+        val after = System.currentTimeMillis()
+
+        val stored = prefs(base)
+        assertTrue(stored.getBoolean("is_monitoring_active", false))
+        assertTrue(context.startedService)
+        assertEquals(0, stored.getInt("blocked_app_attempts", -1))
+        val start = stored.getLong("session_start_timestamp", 0L)
+        assertTrue(
+            "session start $start should be written before the service callback, was $previousStart",
+            start in before..after
+        )
+        val elapsedMs = after - start
+        val remainingMinutes = ((30 * 60_000L - elapsedMs).coerceAtLeast(0) / 60_000L).toInt()
+        assertTrue(remainingMinutes == 29 || remainingMinutes == 30)
+    }
+
+    @Test
+    fun startWithoutDurationResetsAttemptsAndKeepsTimestamp() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        prefs(base).edit()
+            .putBoolean("is_monitoring_active", false)
+            .putInt("blocked_app_attempts", 4)
+            .putInt("monitoring_duration_minutes", 0)
+            .putLong("session_start_timestamp", 1234L)
+            .commit()
+
+        assertEquals(MonitoringToggle.Started, toggleMonitoring(serviceCallbackBlocked(base)))
+
+        val stored = prefs(base)
+        assertEquals(0, stored.getInt("blocked_app_attempts", -1))
+        assertEquals(1234L, stored.getLong("session_start_timestamp", 0L))
+    }
+
+    @Test
+    fun stopLeavesAttemptCountAndSessionStartUntouched() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        prefs(base).edit()
+            .putBoolean("is_monitoring_active", true)
+            .putInt("blocked_app_attempts", 5)
+            .putInt("monitoring_duration_minutes", 30)
+            .putLong("session_start_timestamp", 999L)
+            .commit()
+
+        assertEquals(MonitoringToggle.Stopped, toggleMonitoring(serviceCallbackBlocked(base)))
+
+        val stored = prefs(base)
+        assertFalse(stored.getBoolean("is_monitoring_active", true))
+        assertEquals(5, stored.getInt("blocked_app_attempts", -1))
+        assertEquals(999L, stored.getLong("session_start_timestamp", 0L))
+    }
+
+    @Test
     fun togglePublishesSessionBeforeServiceCallbacks() {
         val base = ApplicationProvider.getApplicationContext<Context>()
         prefs(base).edit().putBoolean("is_monitoring_active", false).commit()
@@ -183,6 +248,24 @@ class QrLinkDispatchTest {
 
     private fun prefs(context: Context) =
         context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+
+    private fun serviceCallbackBlocked(base: Context) = object : ContextWrapper(base) {
+        var startedService = false
+
+        override fun startForegroundService(service: Intent): ComponentName {
+            startedService = true
+            return ComponentName(base, AppMonitoringService::class.java)
+        }
+
+        override fun startService(service: Intent): ComponentName {
+            startedService = true
+            return ComponentName(base, AppMonitoringService::class.java)
+        }
+
+        override fun stopService(name: Intent): Boolean {
+            return true
+        }
+    }
 
     private fun launch(content: String): QrLinkActivity {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(content))

@@ -29,10 +29,13 @@ import android.os.Process
 
 private const val PREFS_NAME = "app_prefs"
 private const val PREF_MONITORING_ACTIVE = "is_monitoring_active"
+private const val PREF_BLOCKED_APP_ATTEMPTS = "blocked_app_attempts"
+private const val PREF_SESSION_START_TIMESTAMP = "session_start_timestamp"
+private const val PREF_MONITORING_DURATION_MINUTES = "monitoring_duration_minutes"
 
 // Tracks the monitoring session without ActivityManager.getRunningServices().
-// toggleMonitoring publishes the new value before it returns. The service writes
-// the same flag again from onStartCommand and onDestroy, including starts and
+// toggleMonitoring publishes the new session before it returns. The service writes
+// the same values again from onStartCommand and onDestroy, including starts and
 // stops that do not go through toggleMonitoring, but those callbacks run only
 // after startForegroundService and stopService have already returned.
 fun isServiceRunning(context: Context, serviceClass: Class<out Service>): Boolean {
@@ -48,10 +51,11 @@ enum class MonitoringToggle {
 /**
  * Starts monitoring when it is off, and stops it when it is on.
  *
- * The session flag is committed before this returns. [QrLinkActivity] opens the
- * home screen immediately, and that screen reads [isServiceRunning] on resume.
- * Waiting for [AppMonitoringService] to write the flag would show the previous
- * session, so the next scan would toggle the opposite way.
+ * The session is committed before this returns. [QrLinkActivity] opens the home
+ * screen immediately, and that screen reads [isServiceRunning], the attempt
+ * count, and the session start on resume. Compose keeps those values until the
+ * next resume. Waiting for [AppMonitoringService.onStartCommand] would show the
+ * previous session, and the next scan would toggle the opposite way.
  */
 fun toggleMonitoring(context: Context): MonitoringToggle {
     val serviceIntent = Intent(context, AppMonitoringService::class.java)
@@ -66,9 +70,16 @@ fun toggleMonitoring(context: Context): MonitoringToggle {
         MonitoringToggle.Started
     }
     // Durable before QrLinkActivity finishes and the home screen reads it.
-    monitoringPrefs(context).edit()
+    val prefs = monitoringPrefs(context)
+    val editor = prefs.edit()
         .putBoolean(PREF_MONITORING_ACTIVE, outcome == MonitoringToggle.Started)
-        .commit()
+    if (outcome == MonitoringToggle.Started) {
+        editor.putInt(PREF_BLOCKED_APP_ATTEMPTS, 0)
+        if (prefs.getInt(PREF_MONITORING_DURATION_MINUTES, 0) > 0) {
+            editor.putLong(PREF_SESSION_START_TIMESTAMP, System.currentTimeMillis())
+        }
+    }
+    editor.commit()
     return outcome
 }
 
