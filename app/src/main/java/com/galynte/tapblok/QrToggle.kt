@@ -20,6 +20,11 @@
 package com.galynte.tapblok
 
 import android.net.Uri
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.common.BitMatrix
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
 /**
  * Printed codes use [CONTENT] so a phone camera can hand the link to TapOut.
@@ -30,8 +35,26 @@ object QrToggle {
     const val TOKEN = "TAGOUT_TOGGLE"
     const val SCHEME = "tagout"
 
+    /** Modules of white around the symbol. Shared by the screen and the README image. */
+    const val QUIET_ZONE_MODULES = 2
+
+    /** Pixel size of the bitmap Display QR Code draws and the README image copies. */
+    const val IMAGE_SIZE = 512
+
     /** Link encoded by the on-screen code and docs/assets/images/tagout-toggle-qr.png. */
     const val CONTENT = "$SCHEME://$TOKEN"
+
+    /**
+     * Symbol drawn by Display QR Code. The README image is this same bitmap:
+     * another encoder can paint a different symbol for [CONTENT].
+     */
+    fun matrix(content: String = CONTENT, outputSize: Int = IMAGE_SIZE): BitMatrix {
+        val hints = mapOf(
+            EncodeHintType.MARGIN to QUIET_ZONE_MODULES,
+            EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M
+        )
+        return QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, outputSize, outputSize, hints)
+    }
 
     fun matches(raw: String?): Boolean {
         val value = raw?.trim().orEmpty()

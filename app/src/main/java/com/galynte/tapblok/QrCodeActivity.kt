@@ -39,10 +39,6 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.set
 import com.galynte.tapblok.ui.components.TapOutScaffold
 import com.galynte.tapblok.ui.theme.TapOutTheme
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -107,13 +103,8 @@ fun QrCodeScreen(modifier: Modifier = Modifier, content: String) {
 }
 
 private fun generateQrCode(content: String): Bitmap? {
-    val writer = QRCodeWriter()
     return try {
-        val hints = mapOf(
-            EncodeHintType.MARGIN to 2,
-            EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M
-        )
-        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, 512, 512, hints)
+        val bitMatrix = QrToggle.matrix(content)
         val width = bitMatrix.width
         val height = bitMatrix.height
         val bmp = createBitmap(width, height, Bitmap.Config.RGB_565)
