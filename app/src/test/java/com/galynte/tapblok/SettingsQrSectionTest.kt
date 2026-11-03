@@ -49,6 +49,7 @@ class SettingsQrSectionTest {
         }
         composeRule.onAllNodesWithText("Display QR Code").assertCountEquals(0)
         composeRule.onNodeWithText("Enable QR Code controls").assertIsDisplayed()
+        composeRule.onNodeWithText("Displays Scan QR Code button on the main screen").assertIsDisplayed()
     }
 
     @Test
