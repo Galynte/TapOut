@@ -28,7 +28,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
@@ -36,7 +35,6 @@ import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
@@ -141,68 +139,53 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(onClick = onWriteNfcTagClick)
             )
             HorizontalDivider()
-            Surface(
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant
-            ) {
-                Column {
-                    ListItem(
-                        headlineContent = { Text("Enable QR Code controls") },
-                        supportingContent = {
-                            Column {
-                                Text("Displays Scan QR Code button on the main screen")
-                                if (isMonitoringActive) {
-                                    Text(
-                                        text = "Stop monitoring to change QR code controls",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.padding(top = 8.dp)
-                                    )
-                                }
+            ListItem(
+                headlineContent = { Text("Enable QR Code controls") },
+                supportingContent = {
+                    Column {
+                        Text("Displays Scan QR Code button on the main screen")
+                        if (isMonitoringActive) {
+                            Text(
+                                text = "Stop monitoring to change QR code controls",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                    }
+                },
+                trailingContent = {
+                    Switch(
+                        checked = localEnableQrCode,
+                        onCheckedChange = { isChecked ->
+                            if (!isMonitoringActive) {
+                                localEnableQrCode = isChecked
+                                onEnableQrCodeChanged(isChecked)
                             }
                         },
-                        trailingContent = {
-                            Switch(
-                                checked = localEnableQrCode,
-                                onCheckedChange = { isChecked ->
-                                    if (!isMonitoringActive) {
-                                        localEnableQrCode = isChecked
-                                        onEnableQrCodeChanged(isChecked)
-                                    }
-                                },
-                                enabled = !isMonitoringActive,
-                                modifier = Modifier.testTag("qr_code_controls_switch")
-                            )
-                        },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                        enabled = !isMonitoringActive,
+                        modifier = Modifier.testTag("qr_code_controls_switch")
                     )
-                    if (localEnableQrCode) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-                        )
-                        ListItem(
-                            headlineContent = { Text("Display QR Code") },
-                            supportingContent = { Text("Printable code for the phone camera") },
-                            leadingContent = {
-                                Icon(
-                                    Icons.Filled.SubdirectoryArrowRight,
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(start = 8.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            },
-                            trailingContent = {
-                                Icon(Icons.Filled.ChevronRight, contentDescription = null)
-                            },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            modifier = Modifier.clickable(onClick = onShowQrCodeClick)
-                        )
-                    }
                 }
+            )
+            if (localEnableQrCode) {
+                HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
+                ListItem(
+                    headlineContent = { Text("Display QR Code") },
+                    supportingContent = { Text("Printable code for the phone camera") },
+                    leadingContent = {
+                        Icon(
+                            Icons.Filled.SubdirectoryArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.padding(start = 16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    trailingContent = {
+                        Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                    },
+                    modifier = Modifier.clickable(onClick = onShowQrCodeClick)
+                )
             }
             HorizontalDivider()
             ListItem(
