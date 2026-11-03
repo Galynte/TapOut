@@ -28,21 +28,37 @@ import org.junit.Test
 import java.io.File
 import javax.imageio.ImageIO
 
+/**
+ * The README image has to be the symbol Display QR Code draws.
+ * Decoding to the same link is not enough: another encoder paints a different
+ * symbol for that link.
+ */
 class QrCodeImageTest {
 
     @Test
-    fun printableImageEncodesTagoutToggleLink() {
+    fun printableImageMatchesDisplayQrCode() {
         val file = listOf(
             File("docs/assets/images/tagout-toggle-qr.png"),
             File("../docs/assets/images/tagout-toggle-qr.png")
         ).firstOrNull { it.isFile } ?: error("Printable QR image is missing from the repo")
 
         val image = ImageIO.read(file)
+        val matrix = QrToggle.matrix()
+        assertEquals(matrix.width, image.width)
+        assertEquals(matrix.height, image.height)
+
         val pixels = IntArray(image.width * image.height)
         image.getRGB(0, 0, image.width, image.height, pixels, 0, image.width)
+        for (y in 0 until image.height) {
+            for (x in 0 until image.width) {
+                val rgb = pixels[y * image.width + x]
+                val dark = ((rgb shr 16) and 0xFF) + ((rgb shr 8) and 0xFF) + (rgb and 0xFF) < 128 * 3
+                assertEquals("module at $x,$y", matrix.get(x, y), dark)
+            }
+        }
+
         val source = RGBLuminanceSource(image.width, image.height, pixels)
         val text = MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(source))).text
-
         assertEquals(QrToggle.CONTENT, text)
     }
 }

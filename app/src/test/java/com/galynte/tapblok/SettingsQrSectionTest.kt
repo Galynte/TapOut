@@ -22,8 +22,11 @@ package com.galynte.tapblok
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.galynte.tapblok.ui.theme.TapOutTheme
@@ -68,18 +71,75 @@ class SettingsQrSectionTest {
         assertEquals(1, clicks)
     }
 
+    @Test
+    fun qrControlsToggleWhenMonitoringIsOff() {
+        var enabled = false
+        composeRule.setContent {
+            TapOutTheme {
+                settingsScreen(
+                    enableQrCode = false,
+                    onEnableQrCodeChanged = { enabled = it }
+                )
+            }
+        }
+        composeRule.onAllNodesWithText("Stop monitoring to change QR code controls").assertCountEquals(0)
+        composeRule.onNodeWithTag("qr_code_controls_switch", useUnmergedTree = true)
+            .assertIsEnabled()
+            .performClick()
+        composeRule.onNodeWithText("Display QR Code").assertIsDisplayed()
+        assertEquals(true, enabled)
+    }
+
+    @Test
+    fun qrControlsStayFixedWhileMonitoring() {
+        var changes = 0
+        composeRule.setContent {
+            TapOutTheme {
+                settingsScreen(
+                    isMonitoringActive = true,
+                    enableQrCode = false,
+                    onEnableQrCodeChanged = { changes++ }
+                )
+            }
+        }
+        composeRule.onNodeWithText("Stop monitoring to change QR code controls").assertIsDisplayed()
+        composeRule.onNodeWithTag("qr_code_controls_switch", useUnmergedTree = true).assertIsNotEnabled()
+        composeRule.onAllNodesWithText("Display QR Code").assertCountEquals(0)
+        assertEquals(0, changes)
+    }
+
+    @Test
+    fun displayQrCodeStaysAvailableWhileMonitoring() {
+        var clicks = 0
+        composeRule.setContent {
+            TapOutTheme {
+                settingsScreen(
+                    isMonitoringActive = true,
+                    enableQrCode = true,
+                    onShowQrCodeClick = { clicks++ }
+                )
+            }
+        }
+        composeRule.onNodeWithText("Stop monitoring to change QR code controls").assertIsDisplayed()
+        composeRule.onNodeWithTag("qr_code_controls_switch", useUnmergedTree = true).assertIsNotEnabled()
+        composeRule.onNodeWithText("Display QR Code").assertIsDisplayed().performClick()
+        assertEquals(1, clicks)
+    }
+
     @Composable
     private fun settingsScreen(
         enableQrCode: Boolean,
+        isMonitoringActive: Boolean = false,
+        onEnableQrCodeChanged: (Boolean) -> Unit = {},
         onShowQrCodeClick: () -> Unit = {}
     ) {
         SettingsScreen(
             onBackClick = {},
-            isMonitoringActive = false,
+            isMonitoringActive = isMonitoringActive,
             enableQrCode = enableQrCode,
             breakDurationMinutes = 0,
             monitoringDurationMinutes = 0,
-            onEnableQrCodeChanged = {},
+            onEnableQrCodeChanged = onEnableQrCodeChanged,
             onBreakOptionChanged = {},
             onMonitoringDurationChanged = {},
             onWriteNfcTagClick = {},
