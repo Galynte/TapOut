@@ -81,7 +81,7 @@ class NfcWriteAlertTest {
         )
         assertEquals(NfcWriteOutcome.TooSmall, outcome)
         assertEquals(0, writes)
-        assertEquals("FAILURE - Tag is too small", outcome.alert().title)
+        assertEquals("FAILURE - Incorrect Tag type", outcome.alert().title)
     }
 
     @Test

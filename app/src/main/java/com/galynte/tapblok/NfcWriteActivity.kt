@@ -259,7 +259,7 @@ internal fun NfcWriteOutcome.alert(): NfcWriteAlert = when (this) {
     NfcWriteOutcome.Success -> NfcWriteAlert("SUCCESS")
     NfcWriteOutcome.ReadOnly -> NfcWriteAlert("FAILURE - Tag is read-only")
     NfcWriteOutcome.NotNdef -> NfcWriteAlert("FAILURE - Incorrect Tag type")
-    NfcWriteOutcome.TooSmall -> NfcWriteAlert("FAILURE - Tag is too small")
+    NfcWriteOutcome.TooSmall -> NfcWriteAlert("FAILURE - Incorrect Tag type")
     NfcWriteOutcome.Failed -> NfcWriteAlert("FAILURE - Write failed")
 }
 
