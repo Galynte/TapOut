@@ -75,14 +75,11 @@ class NfcWriteActivity : ComponentActivity() {
             TapOutTheme {
                 NfcWriteScreen(
                     outcome = writeOutcome.value,
-                    onOutcomeDismissed = { outcome ->
-                        // Keep a successful result until this screen is gone. Clearing it
-                        // first would let a tag already in flight replace that success.
-                        if (outcome.closesScreenWhenAcknowledged()) {
-                            finish()
-                        } else {
-                            writeOutcome.value = null
-                        }
+                    onOutcomeDismissed = { _ ->
+                        // Keep the result until this screen is gone. Clearing it first
+                        // would let a tag already in flight replace the alert. OK on
+                        // success and on every failure returns to Settings.
+                        finish()
                     },
                 )
             }
@@ -180,7 +177,6 @@ internal data class NfcTagInfo(
 
 internal data class NfcWriteAlert(
     val title: String,
-    val message: String,
 )
 
 /**
@@ -205,18 +201,20 @@ internal fun performNfcWrite(
     }
 }
 
-/** Success leaves this screen once the user acknowledges it. Any other result stays so another tag can be tried. */
-internal fun NfcWriteOutcome.closesScreenWhenAcknowledged(): Boolean = this == NfcWriteOutcome.Success
+/** OK on every result, success or failure, returns to Settings. */
+internal fun NfcWriteOutcome.closesScreenWhenAcknowledged(): Boolean = true
 
 /**
  * True while a later tag may still be written.
  * Success stays on screen until the user acknowledges it. Until then a
  * follow-up tag is ignored so it cannot replace the success result.
+ * A failure can still be replaced by another tag before OK. OK itself
+ * leaves this screen for every result.
  * The tag is still captured: [keepsNfcForegroundDispatch] stays true, so
  * the scan is not delivered to [NfcHandlerActivity].
  */
 internal fun acceptsAnotherNfcTag(current: NfcWriteOutcome?): Boolean =
-    current?.closesScreenWhenAcknowledged() != true
+    current != NfcWriteOutcome.Success
 
 /**
  * Whether this resumed screen keeps NFC tags instead of releasing them.
@@ -258,26 +256,11 @@ internal fun attemptNfcWrite(
 }
 
 internal fun NfcWriteOutcome.alert(): NfcWriteAlert = when (this) {
-    NfcWriteOutcome.Success -> NfcWriteAlert(
-        title = "Tag written",
-        message = "This NFC tag was written successfully.",
-    )
-    NfcWriteOutcome.ReadOnly -> NfcWriteAlert(
-        title = "Tag is read-only",
-        message = "Nothing was written. This tag is read-only. A writable NFC tag must be used.",
-    )
-    NfcWriteOutcome.NotNdef -> NfcWriteAlert(
-        title = "Tag can't be written",
-        message = "Nothing was written. This tag can't accept TapOut data. A writable NFC tag must be used.",
-    )
-    NfcWriteOutcome.TooSmall -> NfcWriteAlert(
-        title = "Tag is too small",
-        message = "Nothing was written. This tag doesn't have enough space. Try a larger writable NFC tag.",
-    )
-    NfcWriteOutcome.Failed -> NfcWriteAlert(
-        title = "Write failed",
-        message = "Nothing was written. Hold a writable NFC tag to the phone and try again.",
-    )
+    NfcWriteOutcome.Success -> NfcWriteAlert("SUCCESS")
+    NfcWriteOutcome.ReadOnly -> NfcWriteAlert("FAILURE - Tag is read-only")
+    NfcWriteOutcome.NotNdef -> NfcWriteAlert("FAILURE - Incorrect Tag type")
+    NfcWriteOutcome.TooSmall -> NfcWriteAlert("FAILURE - Tag is too small")
+    NfcWriteOutcome.Failed -> NfcWriteAlert("FAILURE - Write failed")
 }
 
 @Composable
@@ -304,7 +287,6 @@ internal fun NfcWriteScreen(
         AlertDialog(
             onDismissRequest = { onOutcomeDismissed(outcome) },
             title = { Text(alert.title) },
-            text = { Text(alert.message) },
             confirmButton = {
                 TextButton(onClick = { onOutcomeDismissed(outcome) }) {
                     Text("OK")

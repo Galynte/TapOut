@@ -53,8 +53,8 @@ class NfcWriteAlertTest {
         )
         assertEquals(NfcWriteOutcome.ReadOnly, outcome)
         assertEquals(0, writes)
-        assertFalse(outcome.closesScreenWhenAcknowledged())
-        assertTrue(outcome.alert().message.contains("A writable NFC tag must be used."))
+        assertTrue(outcome.closesScreenWhenAcknowledged())
+        assertEquals("FAILURE - Tag is read-only", outcome.alert().title)
     }
 
     @Test
@@ -67,7 +67,8 @@ class NfcWriteAlertTest {
         )
         assertEquals(NfcWriteOutcome.NotNdef, outcome)
         assertEquals(0, writes)
-        assertTrue(outcome.alert().message.contains("A writable NFC tag must be used."))
+        assertTrue(outcome.closesScreenWhenAcknowledged())
+        assertEquals("FAILURE - Incorrect Tag type", outcome.alert().title)
     }
 
     @Test
@@ -80,6 +81,7 @@ class NfcWriteAlertTest {
         )
         assertEquals(NfcWriteOutcome.TooSmall, outcome)
         assertEquals(0, writes)
+        assertEquals("FAILURE - Tag is too small", outcome.alert().title)
     }
 
     @Test
@@ -93,7 +95,7 @@ class NfcWriteAlertTest {
         assertEquals(NfcWriteOutcome.Success, outcome)
         assertEquals(1, writes)
         assertTrue(outcome.closesScreenWhenAcknowledged())
-        assertEquals("This NFC tag was written successfully.", outcome.alert().message)
+        assertEquals("SUCCESS", outcome.alert().title)
     }
 
     @Test
@@ -114,6 +116,7 @@ class NfcWriteAlertTest {
                 write = { throw FormatException("bad ndef") },
             ),
         )
+        assertEquals("FAILURE - Write failed", NfcWriteOutcome.Failed.alert().title)
     }
 
     @Test
@@ -124,8 +127,8 @@ class NfcWriteAlertTest {
             }
         }
         composeRule.onNodeWithText("Hold tag to phone", substring = true).assertIsDisplayed()
-        composeRule.onAllNodesWithText("Tag written").assertCountEquals(0)
-        composeRule.onAllNodesWithText("Tag is read-only").assertCountEquals(0)
+        composeRule.onAllNodesWithText("SUCCESS").assertCountEquals(0)
+        composeRule.onAllNodesWithText("FAILURE - Tag is read-only").assertCountEquals(0)
     }
 
     @Test
@@ -139,10 +142,7 @@ class NfcWriteAlertTest {
                 )
             }
         }
-        composeRule.onNodeWithText("Tag is read-only").assertIsDisplayed()
-        composeRule.onNodeWithText(
-            "Nothing was written. This tag is read-only. A writable NFC tag must be used.",
-        ).assertIsDisplayed()
+        composeRule.onNodeWithText("FAILURE - Tag is read-only").assertIsDisplayed()
         composeRule.onNodeWithText("OK").performClick()
         assertEquals(NfcWriteOutcome.ReadOnly, dismissed)
     }
@@ -154,9 +154,7 @@ class NfcWriteAlertTest {
                 NfcWriteScreen(outcome = NfcWriteOutcome.NotNdef, onOutcomeDismissed = {})
             }
         }
-        composeRule.onNodeWithText("Tag can't be written").assertIsDisplayed()
-        composeRule.onNodeWithText("A writable NFC tag must be used.", substring = true)
-            .assertIsDisplayed()
+        composeRule.onNodeWithText("FAILURE - Incorrect Tag type").assertIsDisplayed()
     }
 
     @Test
@@ -179,7 +177,7 @@ class NfcWriteAlertTest {
         assertFalse(attempt.wroteTag)
         assertEquals(0, writes)
         assertEquals(NfcWriteOutcome.Success, attempt.outcome)
-        assertEquals("This NFC tag was written successfully.", attempt.outcome?.alert()?.message)
+        assertEquals("SUCCESS", attempt.outcome?.alert()?.title)
     }
 
     @Test
@@ -206,8 +204,7 @@ class NfcWriteAlertTest {
                 )
             }
         }
-        composeRule.onNodeWithText("Tag written").assertIsDisplayed()
-        composeRule.onNodeWithText("This NFC tag was written successfully.").assertIsDisplayed()
+        composeRule.onNodeWithText("SUCCESS").assertIsDisplayed()
         composeRule.onNodeWithText("OK").performClick()
         assertEquals(NfcWriteOutcome.Success, dismissed)
     }
