@@ -96,18 +96,23 @@ class NfcWriteActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        // Disable foreground dispatch when the activity is not in the foreground
+        // Required once this screen is no longer resumed. The success dialog does
+        // not pause the activity, so a tag still in the field stays here until then.
         nfcAdapter?.disableForegroundDispatch(this)
     }
 
     /**
-     * Foreground dispatch stays on only while another tag may still be written.
-     * After a successful write the dialog stays up, so dispatch is turned off
-     * and a later tag cannot replace that result.
+     * Keep every discovered tag while this screen is resumed, including the
+     * success dialog.
+     *
+     * A follow-up scan is not written after success, but it still has to be
+     * captured here. This activity has no NFC intent filter. Turning dispatch
+     * off would hand the tag just written to [NfcHandlerActivity], which
+     * toggles monitoring. The tag is often still against the phone.
      */
     private fun syncNfcForegroundDispatch() {
         val adapter = nfcAdapter ?: return
-        if (!acceptsAnotherNfcTag(writeOutcome.value)) {
+        if (!keepsNfcForegroundDispatch(writeOutcome.value)) {
             adapter.disableForegroundDispatch(this)
             return
         }
@@ -132,9 +137,8 @@ class NfcWriteActivity : ComponentActivity() {
             Log.w("NfcWriteActivity", "NFC tag was not written: $outcome")
         }
         writeOutcome.value = outcome
-        if (!acceptsAnotherNfcTag(outcome)) {
-            syncNfcForegroundDispatch()
-        }
+        // Success refuses another write, but the tag stays captured here.
+        syncNfcForegroundDispatch()
     }
 
     private fun createNdefMessage(payload: String): NdefMessage {
@@ -206,12 +210,33 @@ internal fun NfcWriteOutcome.closesScreenWhenAcknowledged(): Boolean = this == N
 
 /**
  * True while a later tag may still be written.
- * Success stays on screen until the user acknowledges it. Until then this is
- * false: foreground dispatch is off, and a follow-up tag is ignored so it
- * cannot replace the success result with a failure.
+ * Success stays on screen until the user acknowledges it. Until then a
+ * follow-up tag is ignored so it cannot replace the success result.
+ * The tag is still captured: [keepsNfcForegroundDispatch] stays true, so
+ * the scan is not delivered to [NfcHandlerActivity].
  */
 internal fun acceptsAnotherNfcTag(current: NfcWriteOutcome?): Boolean =
     current?.closesScreenWhenAcknowledged() != true
+
+/**
+ * Whether this resumed screen keeps NFC tags instead of releasing them.
+ *
+ * Every result keeps them, including [NfcWriteOutcome.Success]. The success
+ * dialog does not pause the activity. Releasing the tag there is not an
+ * ignore: [NfcWriteActivity] has no NFC intent filter, so the tag just
+ * written matches [NfcHandlerActivity] and toggles monitoring.
+ *
+ * Dispatch turns off in [NfcWriteActivity.onPause], when this screen is leaving.
+ */
+internal fun keepsNfcForegroundDispatch(current: NfcWriteOutcome?): Boolean =
+    when (current) {
+        null,
+        NfcWriteOutcome.Success,
+        NfcWriteOutcome.ReadOnly,
+        NfcWriteOutcome.NotNdef,
+        NfcWriteOutcome.TooSmall,
+        NfcWriteOutcome.Failed -> true
+    }
 
 internal data class NfcWriteAttempt(
     val outcome: NfcWriteOutcome?,
