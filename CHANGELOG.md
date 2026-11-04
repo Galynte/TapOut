@@ -1,3 +1,11 @@
+# 1.3.3 (2026-11-04)
+
+### Bug Fixes
+
+* NFC tag activation shows SUCCESS, or FAILURE with the reason, and OK returns to Settings.
+* A read-only tag says FAILURE - Tag is read-only. A tag of the wrong type, including one that is too small, says FAILURE - Incorrect Tag type. A write that does not finish says FAILURE - Write failed.
+* A successful write stays on the write screen until that dialog is dismissed, so the tag does not also start or stop the session.
+
 # 1.3.2 (2026-11-03)
 
 ### Bug Fixes
