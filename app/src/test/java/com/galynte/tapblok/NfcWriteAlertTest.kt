@@ -160,6 +160,42 @@ class NfcWriteAlertTest {
     }
 
     @Test
+    fun successfulWriteIgnoresALaterTag() {
+        assertFalse(acceptsAnotherNfcTag(NfcWriteOutcome.Success))
+        assertTrue(acceptsAnotherNfcTag(null))
+        assertTrue(acceptsAnotherNfcTag(NfcWriteOutcome.Failed))
+        assertTrue(acceptsAnotherNfcTag(NfcWriteOutcome.ReadOnly))
+        assertTrue(acceptsAnotherNfcTag(NfcWriteOutcome.NotNdef))
+        assertTrue(acceptsAnotherNfcTag(NfcWriteOutcome.TooSmall))
+    }
+
+    @Test
+    fun followUpFailureDoesNotReplaceASuccessfulWrite() {
+        var writes = 0
+        val attempt = attemptNfcWrite(NfcWriteOutcome.Success) {
+            writes++
+            NfcWriteOutcome.Failed
+        }
+        assertFalse(attempt.wroteTag)
+        assertEquals(0, writes)
+        assertEquals(NfcWriteOutcome.Success, attempt.outcome)
+        assertEquals("This NFC tag was written successfully.", attempt.outcome?.alert()?.message)
+    }
+
+    @Test
+    fun failedWriteCanBeRetriedWithAnotherTag() {
+        var writes = 0
+        val attempt = attemptNfcWrite(NfcWriteOutcome.Failed) {
+            writes++
+            NfcWriteOutcome.Success
+        }
+        assertTrue(attempt.wroteTag)
+        assertEquals(1, writes)
+        assertEquals(NfcWriteOutcome.Success, attempt.outcome)
+        assertFalse(acceptsAnotherNfcTag(attempt.outcome))
+    }
+
+    @Test
     fun successAlertConfirmsTheWrite() {
         var dismissed: NfcWriteOutcome? = null
         composeRule.setContent {

@@ -76,9 +76,12 @@ class NfcWriteActivity : ComponentActivity() {
                 NfcWriteScreen(
                     outcome = writeOutcome.value,
                     onOutcomeDismissed = { outcome ->
-                        writeOutcome.value = null
+                        // Keep a successful result until this screen is gone. Clearing it
+                        // first would let a tag already in flight replace that success.
                         if (outcome.closesScreenWhenAcknowledged()) {
                             finish()
+                        } else {
+                            writeOutcome.value = null
                         }
                     },
                 )
@@ -88,10 +91,7 @@ class NfcWriteActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Enable foreground dispatch to give this activity priority for NFC intents
-        val intent = Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_MUTABLE)
-        nfcAdapter?.enableForegroundDispatch(this, pendingIntent, null, null)
+        syncNfcForegroundDispatch()
     }
 
     override fun onPause() {
@@ -100,17 +100,40 @@ class NfcWriteActivity : ComponentActivity() {
         nfcAdapter?.disableForegroundDispatch(this)
     }
 
+    /**
+     * Foreground dispatch stays on only while another tag may still be written.
+     * After a successful write the dialog stays up, so dispatch is turned off
+     * and a later tag cannot replace that result.
+     */
+    private fun syncNfcForegroundDispatch() {
+        val adapter = nfcAdapter ?: return
+        if (!acceptsAnotherNfcTag(writeOutcome.value)) {
+            adapter.disableForegroundDispatch(this)
+            return
+        }
+        val intent = Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_MUTABLE)
+        adapter.enableForegroundDispatch(this, pendingIntent, null, null)
+    }
+
     // This method is called when an NFC tag is detected while the activity is in the foreground
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val tag: Tag? = IntentCompat.getParcelableExtra(intent, NfcAdapter.EXTRA_TAG, Tag::class.java)
         val message = ndefMessage
-        if (tag != null && message != null) {
-            val outcome = writeNdefMessageToTag(message, tag)
-            if (outcome != NfcWriteOutcome.Success) {
-                Log.w("NfcWriteActivity", "NFC tag was not written: $outcome")
-            }
-            writeOutcome.value = outcome
+        if (tag == null || message == null) return
+        val attempt = attemptNfcWrite(writeOutcome.value) {
+            writeNdefMessageToTag(message, tag)
+        }
+        // Success is already showing. Leave it there, and do not write this tag.
+        if (!attempt.wroteTag) return
+        val outcome = attempt.outcome ?: return
+        if (outcome != NfcWriteOutcome.Success) {
+            Log.w("NfcWriteActivity", "NFC tag was not written: $outcome")
+        }
+        writeOutcome.value = outcome
+        if (!acceptsAnotherNfcTag(outcome)) {
+            syncNfcForegroundDispatch()
         }
     }
 
@@ -178,8 +201,36 @@ internal fun performNfcWrite(
     }
 }
 
-/** A successful write leaves this screen. A failed write stays so another tag can be tried. */
+/** Success leaves this screen once the user acknowledges it. Any other result stays so another tag can be tried. */
 internal fun NfcWriteOutcome.closesScreenWhenAcknowledged(): Boolean = this == NfcWriteOutcome.Success
+
+/**
+ * True while a later tag may still be written.
+ * Success stays on screen until the user acknowledges it. Until then this is
+ * false: foreground dispatch is off, and a follow-up tag is ignored so it
+ * cannot replace the success result with a failure.
+ */
+internal fun acceptsAnotherNfcTag(current: NfcWriteOutcome?): Boolean =
+    current?.closesScreenWhenAcknowledged() != true
+
+internal data class NfcWriteAttempt(
+    val outcome: NfcWriteOutcome?,
+    val wroteTag: Boolean,
+)
+
+/**
+ * Writes [write] unless a successful result is already showing.
+ * That result is kept, so a later failure cannot take its place.
+ */
+internal fun attemptNfcWrite(
+    current: NfcWriteOutcome?,
+    write: () -> NfcWriteOutcome,
+): NfcWriteAttempt {
+    if (!acceptsAnotherNfcTag(current)) {
+        return NfcWriteAttempt(outcome = current, wroteTag = false)
+    }
+    return NfcWriteAttempt(outcome = write(), wroteTag = true)
+}
 
 internal fun NfcWriteOutcome.alert(): NfcWriteAlert = when (this) {
     NfcWriteOutcome.Success -> NfcWriteAlert(
