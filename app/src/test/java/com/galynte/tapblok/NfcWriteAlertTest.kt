@@ -1,0 +1,178 @@
+/*
+ * Copyright 2026 Galynte
+ *
+ * This file is part of TapOut, a fork of TapBlok by cajdata.
+ * Original: https://github.com/cajdata/TapBlok
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.galynte.tapblok
+
+import android.nfc.FormatException
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import com.galynte.tapblok.ui.theme.TapOutTheme
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.IOException
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class NfcWriteAlertTest {
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    @Test
+    fun readOnlyTagIsNotWritten() {
+        var writes = 0
+        val outcome = performNfcWrite(
+            tagInfo = NfcTagInfo(isWritable = false, maxSize = 256),
+            messageSize = 32,
+            write = { writes++ },
+        )
+        assertEquals(NfcWriteOutcome.ReadOnly, outcome)
+        assertEquals(0, writes)
+        assertFalse(outcome.closesScreenWhenAcknowledged())
+        assertTrue(outcome.alert().message.contains("A writable NFC tag must be used."))
+    }
+
+    @Test
+    fun tagWithoutNdefIsNotWritten() {
+        var writes = 0
+        val outcome = performNfcWrite(
+            tagInfo = null,
+            messageSize = 32,
+            write = { writes++ },
+        )
+        assertEquals(NfcWriteOutcome.NotNdef, outcome)
+        assertEquals(0, writes)
+        assertTrue(outcome.alert().message.contains("A writable NFC tag must be used."))
+    }
+
+    @Test
+    fun tagThatIsTooSmallIsNotWritten() {
+        var writes = 0
+        val outcome = performNfcWrite(
+            tagInfo = NfcTagInfo(isWritable = true, maxSize = 8),
+            messageSize = 32,
+            write = { writes++ },
+        )
+        assertEquals(NfcWriteOutcome.TooSmall, outcome)
+        assertEquals(0, writes)
+    }
+
+    @Test
+    fun writableTagIsWritten() {
+        var writes = 0
+        val outcome = performNfcWrite(
+            tagInfo = NfcTagInfo(isWritable = true, maxSize = 32),
+            messageSize = 32,
+            write = { writes++ },
+        )
+        assertEquals(NfcWriteOutcome.Success, outcome)
+        assertEquals(1, writes)
+        assertTrue(outcome.closesScreenWhenAcknowledged())
+        assertEquals("This NFC tag was written successfully.", outcome.alert().message)
+    }
+
+    @Test
+    fun writeErrorsAreReportedAsFailure() {
+        assertEquals(
+            NfcWriteOutcome.Failed,
+            performNfcWrite(
+                tagInfo = NfcTagInfo(isWritable = true, maxSize = 64),
+                messageSize = 32,
+                write = { throw IOException("tag lost") },
+            ),
+        )
+        assertEquals(
+            NfcWriteOutcome.Failed,
+            performNfcWrite(
+                tagInfo = NfcTagInfo(isWritable = true, maxSize = 64),
+                messageSize = 32,
+                write = { throw FormatException("bad ndef") },
+            ),
+        )
+    }
+
+    @Test
+    fun waitingScreenHasNoAlert() {
+        composeRule.setContent {
+            TapOutTheme {
+                NfcWriteScreen(outcome = null, onOutcomeDismissed = {})
+            }
+        }
+        composeRule.onNodeWithText("Hold tag to phone", substring = true).assertIsDisplayed()
+        composeRule.onAllNodesWithText("Tag written").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Tag is read-only").assertCountEquals(0)
+    }
+
+    @Test
+    fun readOnlyAlertTellsTheUserToUseAWritableTag() {
+        var dismissed: NfcWriteOutcome? = null
+        composeRule.setContent {
+            TapOutTheme {
+                NfcWriteScreen(
+                    outcome = NfcWriteOutcome.ReadOnly,
+                    onOutcomeDismissed = { dismissed = it },
+                )
+            }
+        }
+        composeRule.onNodeWithText("Tag is read-only").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Nothing was written. This tag is read-only. A writable NFC tag must be used.",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("OK").performClick()
+        assertEquals(NfcWriteOutcome.ReadOnly, dismissed)
+    }
+
+    @Test
+    fun unsupportedTagAlertTellsTheUserToUseAWritableTag() {
+        composeRule.setContent {
+            TapOutTheme {
+                NfcWriteScreen(outcome = NfcWriteOutcome.NotNdef, onOutcomeDismissed = {})
+            }
+        }
+        composeRule.onNodeWithText("Tag can't be written").assertIsDisplayed()
+        composeRule.onNodeWithText("A writable NFC tag must be used.", substring = true)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun successAlertConfirmsTheWrite() {
+        var dismissed: NfcWriteOutcome? = null
+        composeRule.setContent {
+            TapOutTheme {
+                NfcWriteScreen(
+                    outcome = NfcWriteOutcome.Success,
+                    onOutcomeDismissed = { dismissed = it },
+                )
+            }
+        }
+        composeRule.onNodeWithText("Tag written").assertIsDisplayed()
+        composeRule.onNodeWithText("This NFC tag was written successfully.").assertIsDisplayed()
+        composeRule.onNodeWithText("OK").performClick()
+        assertEquals(NfcWriteOutcome.Success, dismissed)
+    }
+}

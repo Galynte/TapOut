@@ -21,6 +21,7 @@ package com.galynte.tapblok
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.nfc.FormatException
 import android.nfc.NdefMessage
 import android.nfc.NdefRecord
 import android.nfc.NfcAdapter
@@ -35,10 +36,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -50,6 +55,7 @@ class NfcWriteActivity : ComponentActivity() {
 
     private var nfcAdapter: NfcAdapter? = null
     private var ndefMessage: NdefMessage? = null
+    private val writeOutcome = mutableStateOf<NfcWriteOutcome?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,20 +73,15 @@ class NfcWriteActivity : ComponentActivity() {
 
         setContent {
             TapOutTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator()
-                        Text(
-                            text = "Ready to Write\nHold tag to phone",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.padding(top = 16.dp)
-                        )
-                    }
-                }
+                NfcWriteScreen(
+                    outcome = writeOutcome.value,
+                    onOutcomeDismissed = { outcome ->
+                        writeOutcome.value = null
+                        if (outcome.closesScreenWhenAcknowledged()) {
+                            finish()
+                        }
+                    },
+                )
             }
         }
     }
@@ -103,9 +104,13 @@ class NfcWriteActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val tag: Tag? = IntentCompat.getParcelableExtra(intent, NfcAdapter.EXTRA_TAG, Tag::class.java)
-        if (tag != null && ndefMessage != null) {
-            writeNdefMessageToTag(ndefMessage!!, tag)
-            finish()
+        val message = ndefMessage
+        if (tag != null && message != null) {
+            val outcome = writeNdefMessageToTag(message, tag)
+            if (outcome != NfcWriteOutcome.Success) {
+                Log.w("NfcWriteActivity", "NFC tag was not written: $outcome")
+            }
+            writeOutcome.value = outcome
         }
     }
 
@@ -115,25 +120,120 @@ class NfcWriteActivity : ComponentActivity() {
         return NdefMessage(arrayOf(mimeRecord))
     }
 
-    private fun writeNdefMessageToTag(message: NdefMessage, tag: Tag) {
-        val ndef = Ndef.get(tag)
-        ndef?.use {
+    private fun writeNdefMessageToTag(message: NdefMessage, tag: Tag): NfcWriteOutcome {
+        val ndef = Ndef.get(tag) ?: return NfcWriteOutcome.NotNdef
+        return ndef.use { tech ->
             try {
-                it.connect()
-                if (it.maxSize < message.toByteArray().size) {
-                    Toast.makeText(this, "Tag is too small!", Toast.LENGTH_SHORT).show()
-                    return
-                }
-                if (!it.isWritable) {
-                    Toast.makeText(this, "Tag is read-only!", Toast.LENGTH_SHORT).show()
-                    return
-                }
-                it.writeNdefMessage(message)
-                Toast.makeText(this, "Tag written successfully!", Toast.LENGTH_SHORT).show()
+                tech.connect()
+                performNfcWrite(
+                    tagInfo = NfcTagInfo(isWritable = tech.isWritable, maxSize = tech.maxSize),
+                    messageSize = message.toByteArray().size,
+                    write = { tech.writeNdefMessage(message) },
+                )
             } catch (e: IOException) {
                 Log.e("NfcWriteActivity", "Error writing NFC tag", e)
-                Toast.makeText(this, "Failed to write tag.", Toast.LENGTH_SHORT).show()
+                NfcWriteOutcome.Failed
             }
         }
+    }
+}
+
+internal enum class NfcWriteOutcome {
+    Success,
+    ReadOnly,
+    NotNdef,
+    TooSmall,
+    Failed,
+}
+
+internal data class NfcTagInfo(
+    val isWritable: Boolean,
+    val maxSize: Int,
+)
+
+internal data class NfcWriteAlert(
+    val title: String,
+    val message: String,
+)
+
+/**
+ * Writes [messageSize] bytes when [tagInfo] describes a writable NDEF tag.
+ * [write] is not called when the tag cannot accept the message.
+ */
+internal fun performNfcWrite(
+    tagInfo: NfcTagInfo?,
+    messageSize: Int,
+    write: () -> Unit,
+): NfcWriteOutcome {
+    if (tagInfo == null) return NfcWriteOutcome.NotNdef
+    if (!tagInfo.isWritable) return NfcWriteOutcome.ReadOnly
+    if (tagInfo.maxSize < messageSize) return NfcWriteOutcome.TooSmall
+    return try {
+        write()
+        NfcWriteOutcome.Success
+    } catch (e: IOException) {
+        NfcWriteOutcome.Failed
+    } catch (e: FormatException) {
+        NfcWriteOutcome.Failed
+    }
+}
+
+/** A successful write leaves this screen. A failed write stays so another tag can be tried. */
+internal fun NfcWriteOutcome.closesScreenWhenAcknowledged(): Boolean = this == NfcWriteOutcome.Success
+
+internal fun NfcWriteOutcome.alert(): NfcWriteAlert = when (this) {
+    NfcWriteOutcome.Success -> NfcWriteAlert(
+        title = "Tag written",
+        message = "This NFC tag was written successfully.",
+    )
+    NfcWriteOutcome.ReadOnly -> NfcWriteAlert(
+        title = "Tag is read-only",
+        message = "Nothing was written. This tag is read-only. A writable NFC tag must be used.",
+    )
+    NfcWriteOutcome.NotNdef -> NfcWriteAlert(
+        title = "Tag can't be written",
+        message = "Nothing was written. This tag can't accept TapOut data. A writable NFC tag must be used.",
+    )
+    NfcWriteOutcome.TooSmall -> NfcWriteAlert(
+        title = "Tag is too small",
+        message = "Nothing was written. This tag doesn't have enough space. Try a larger writable NFC tag.",
+    )
+    NfcWriteOutcome.Failed -> NfcWriteAlert(
+        title = "Write failed",
+        message = "Nothing was written. Hold a writable NFC tag to the phone and try again.",
+    )
+}
+
+@Composable
+internal fun NfcWriteScreen(
+    outcome: NfcWriteOutcome?,
+    onOutcomeDismissed: (NfcWriteOutcome) -> Unit,
+) {
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator()
+            Text(
+                text = "Ready to Write\nHold tag to phone",
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(top = 16.dp)
+            )
+        }
+    }
+    if (outcome != null) {
+        val alert = outcome.alert()
+        AlertDialog(
+            onDismissRequest = { onOutcomeDismissed(outcome) },
+            title = { Text(alert.title) },
+            text = { Text(alert.message) },
+            confirmButton = {
+                TextButton(onClick = { onOutcomeDismissed(outcome) }) {
+                    Text("OK")
+                }
+            },
+        )
     }
 }
