@@ -257,9 +257,15 @@ internal fun attemptNfcWrite(
 
 internal fun NfcWriteOutcome.alert(): NfcWriteAlert = when (this) {
     NfcWriteOutcome.Success -> NfcWriteAlert("SUCCESS")
-    NfcWriteOutcome.ReadOnly -> NfcWriteAlert("FAILURE - Tag is read-only")
-    NfcWriteOutcome.NotNdef -> NfcWriteAlert("FAILURE - Incorrect Tag type")
-    NfcWriteOutcome.TooSmall -> NfcWriteAlert("FAILURE - Incorrect Tag type")
+    NfcWriteOutcome.ReadOnly -> NfcWriteAlert(
+        "FAILURE - Tag is read-only (Type NTAG215 Rewritable Recommended)"
+    )
+    NfcWriteOutcome.NotNdef -> NfcWriteAlert(
+        "FAILURE - Incorrect Tag type (Type NTAG215 Rewritable Recommended)"
+    )
+    NfcWriteOutcome.TooSmall -> NfcWriteAlert(
+        "FAILURE - Incorrect Tag type (Type NTAG215 Rewritable Recommended)"
+    )
     NfcWriteOutcome.Failed -> NfcWriteAlert("FAILURE - Write failed")
 }
 

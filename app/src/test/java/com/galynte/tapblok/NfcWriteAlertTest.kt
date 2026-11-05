@@ -54,7 +54,10 @@ class NfcWriteAlertTest {
         assertEquals(NfcWriteOutcome.ReadOnly, outcome)
         assertEquals(0, writes)
         assertTrue(outcome.closesScreenWhenAcknowledged())
-        assertEquals("FAILURE - Tag is read-only", outcome.alert().title)
+        assertEquals(
+            "FAILURE - Tag is read-only (Type NTAG215 Rewritable Recommended)",
+            outcome.alert().title,
+        )
     }
 
     @Test
@@ -68,7 +71,10 @@ class NfcWriteAlertTest {
         assertEquals(NfcWriteOutcome.NotNdef, outcome)
         assertEquals(0, writes)
         assertTrue(outcome.closesScreenWhenAcknowledged())
-        assertEquals("FAILURE - Incorrect Tag type", outcome.alert().title)
+        assertEquals(
+            "FAILURE - Incorrect Tag type (Type NTAG215 Rewritable Recommended)",
+            outcome.alert().title,
+        )
     }
 
     @Test
@@ -81,7 +87,10 @@ class NfcWriteAlertTest {
         )
         assertEquals(NfcWriteOutcome.TooSmall, outcome)
         assertEquals(0, writes)
-        assertEquals("FAILURE - Incorrect Tag type", outcome.alert().title)
+        assertEquals(
+            "FAILURE - Incorrect Tag type (Type NTAG215 Rewritable Recommended)",
+            outcome.alert().title,
+        )
     }
 
     @Test
@@ -128,7 +137,9 @@ class NfcWriteAlertTest {
         }
         composeRule.onNodeWithText("Hold tag to phone", substring = true).assertIsDisplayed()
         composeRule.onAllNodesWithText("SUCCESS").assertCountEquals(0)
-        composeRule.onAllNodesWithText("FAILURE - Tag is read-only").assertCountEquals(0)
+        composeRule.onAllNodesWithText(
+            "FAILURE - Tag is read-only (Type NTAG215 Rewritable Recommended)"
+        ).assertCountEquals(0)
     }
 
     @Test
@@ -142,7 +153,9 @@ class NfcWriteAlertTest {
                 )
             }
         }
-        composeRule.onNodeWithText("FAILURE - Tag is read-only").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "FAILURE - Tag is read-only (Type NTAG215 Rewritable Recommended)"
+        ).assertIsDisplayed()
         composeRule.onNodeWithText("OK").performClick()
         assertEquals(NfcWriteOutcome.ReadOnly, dismissed)
     }
@@ -154,7 +167,9 @@ class NfcWriteAlertTest {
                 NfcWriteScreen(outcome = NfcWriteOutcome.NotNdef, onOutcomeDismissed = {})
             }
         }
-        composeRule.onNodeWithText("FAILURE - Incorrect Tag type").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "FAILURE - Incorrect Tag type (Type NTAG215 Rewritable Recommended)"
+        ).assertIsDisplayed()
     }
 
     @Test
