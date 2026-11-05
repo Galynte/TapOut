@@ -166,6 +166,103 @@ class MonitoringDurationTest {
     }
 
     @Test
+    fun breakAfterSessionIsGoneDoesNotPromoteToForeground() {
+        prefs().edit()
+            .putBoolean("is_monitoring_active", false)
+            .putInt("blocked_app_attempts", 7)
+            .putInt("breaks_remaining", 2)
+            .commit()
+
+        val breakIntent = breakIntent()
+        val controller = Robolectric.buildService(
+            AppMonitoringService::class.java,
+            breakIntent
+        ).create()
+        try {
+            // BlockingActivity uses startService(), then finishes. This instance
+            // did not come from startForegroundService(), so it must not call
+            // startForeground() — that throws ForegroundServiceStartNotAllowedException
+            // once the activity is gone — and it must stop itself. Otherwise the
+            // ongoing "TapOut is Active" notification stays up with no monitor loop.
+            val service = controller.get()
+            val result = service.onStartCommand(breakIntent, 0, 1)
+            assertEquals(Service.START_NOT_STICKY, result)
+            val shadow = shadowOf(service)
+            assertEquals(0, shadow.lastForegroundNotificationId)
+            assertFalse(shadow.isLastForegroundNotificationAttached)
+            assertTrue(shadow.isStoppedBySelf)
+            assertFalse(isBreakActive(service))
+            assertFalse(prefs().getBoolean("is_monitoring_active", true))
+            assertEquals(7, prefs().getInt("blocked_app_attempts", -1))
+            assertEquals(2, prefs().getInt("breaks_remaining", -1))
+        } finally {
+            runCatching { controller.destroy() }
+        }
+    }
+
+    @Test
+    fun breakOnRunningSessionStartsBreakAndStaysForeground() {
+        prefs().edit()
+            .putBoolean("is_monitoring_active", true)
+            .putInt("monitoring_duration_minutes", 15)
+            .putLong("session_start_timestamp", System.currentTimeMillis())
+            .commit()
+
+        val controller = Robolectric.buildService(AppMonitoringService::class.java).create()
+        try {
+            val service = controller.get()
+            val startResult = service.onStartCommand(
+                Intent(context, AppMonitoringService::class.java),
+                0,
+                1
+            )
+            assertEquals(Service.START_STICKY, startResult)
+
+            val result = service.onStartCommand(breakIntent(), 0, 2)
+            assertEquals(Service.START_NOT_STICKY, result)
+            val shadow = shadowOf(service)
+            assertEquals(AppMonitoringService.NOTIFICATION_ID, shadow.lastForegroundNotificationId)
+            assertTrue(shadow.isLastForegroundNotificationAttached)
+            assertFalse(shadow.isForegroundStopped)
+            assertFalse(shadow.isStoppedBySelf)
+            assertTrue(isBreakActive(service))
+            assertTrue(prefs().getBoolean("is_monitoring_active", false))
+        } finally {
+            runCatching { controller.destroy() }
+        }
+    }
+
+    @Test
+    fun breakAfterMonitoringStoppedRemovesTheForegroundNotification() {
+        prefs().edit()
+            .putBoolean("is_monitoring_active", true)
+            .putInt("monitoring_duration_minutes", 0)
+            .commit()
+
+        val controller = Robolectric.buildService(AppMonitoringService::class.java).create()
+        try {
+            val service = controller.get()
+            service.onStartCommand(Intent(context, AppMonitoringService::class.java), 0, 1)
+            // The session already ended on this instance. The active flag is
+            // clear, which is what deactivateMonitoring and onDestroy write,
+            // but the service object has not been destroyed yet.
+            prefs().edit().putBoolean("is_monitoring_active", false).commit()
+
+            val result = service.onStartCommand(breakIntent(), 0, 2)
+            assertEquals(Service.START_NOT_STICKY, result)
+            val shadow = shadowOf(service)
+            assertTrue(shadow.isForegroundStopped)
+            assertTrue(shadow.notificationShouldRemoved)
+            assertFalse(shadow.isLastForegroundNotificationAttached)
+            assertTrue(shadow.isStoppedBySelf)
+            assertFalse(isBreakActive(service))
+            assertFalse(prefs().getBoolean("is_monitoring_active", true))
+        } finally {
+            runCatching { controller.destroy() }
+        }
+    }
+
+    @Test
     fun serviceRestartKeepsTheOriginalCountdown() {
         val start = System.currentTimeMillis() - 60_000L
         prefs().edit()
@@ -218,6 +315,18 @@ class MonitoringDurationTest {
         assertFalse(shadow.isLastForegroundNotificationAttached)
         assertTrue(shadow.isStoppedBySelf)
         assertFalse(prefs().getBoolean("is_monitoring_active", true))
+    }
+
+    private fun breakIntent(): Intent {
+        return Intent(context, AppMonitoringService::class.java).apply {
+            action = AppMonitoringService.ACTION_START_BREAK
+        }
+    }
+
+    private fun isBreakActive(service: AppMonitoringService): Boolean {
+        val field = AppMonitoringService::class.java.getDeclaredField("isBreakActive")
+        field.isAccessible = true
+        return field.getBoolean(service)
     }
 
     private fun prefs() = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)

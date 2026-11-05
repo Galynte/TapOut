@@ -48,6 +48,11 @@ class AppMonitoringService : Service() {
     private var blockedApps: List<String> = emptyList()
     private var isBreakActive = false
     private var breakTimer: CountDownTimer? = null
+    // True only after this instance has entered the foreground for a live
+    // session. A later ACTION_START_BREAK is delivered to that same instance.
+    // startService() after the instance is gone creates a new one, and this
+    // stays false.
+    private var monitoringStarted = false
 
     companion object {
         const val NOTIFICATION_ID = 1
@@ -61,13 +66,23 @@ class AppMonitoringService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // BlockingActivity delivers a break with startService(), not
+        // startForegroundService(). Handle it before startForeground(). A break
+        // that arrives after this session is already gone creates a new
+        // instance; promoting that instance leaves the ongoing notification up
+        // with no monitor loop and no stopSelf(), and startForeground() throws
+        // ForegroundServiceStartNotAllowedException once BlockingActivity has
+        // finished.
+        if (intent?.action == ACTION_START_BREAK) {
+            return onStartBreak(startId)
+        }
+
         // startForegroundService() must reach startForeground() before this
         // returns. BootCompletedReceiver, ShortcutHandlerActivity, and a sticky
         // restart all use that start, including after the countdown has already
         // finished. Enter the foreground first so stopping the expired session
         // satisfies that contract.
-        val notification = monitoringNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(NOTIFICATION_ID, monitoringNotification())
 
         if (deactivateMonitoringIfExpired(this)) {
             Log.d("AppMonitoringService", "Session timer finished. Stopping service.")
@@ -76,12 +91,8 @@ class AppMonitoringService : Service() {
             return START_NOT_STICKY
         }
 
-        if (intent?.action == ACTION_START_BREAK) {
-            startBreak()
-            return START_NOT_STICKY
-        }
-
         Log.d("AppMonitoringService", "Service has started.")
+        monitoringStarted = true
 
         val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
         val wasActive = prefs.getBoolean("is_monitoring_active", false)
@@ -165,6 +176,35 @@ class AppMonitoringService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
+    }
+
+    /**
+     * Starts a break on the instance that is already monitoring.
+     *
+     * Returns without entering the foreground when this start created a new
+     * instance, or stops the foreground notification when monitoring is
+     * already inactive. Either way the service stops itself.
+     */
+    private fun onStartBreak(startId: Int): Int {
+        val sessionStillRunning = monitoringStarted &&
+            !deactivateMonitoringIfExpired(this) &&
+            isMonitoringActive()
+        if (!sessionStillRunning) {
+            if (monitoringStarted) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+            Log.d("AppMonitoringService", "Break ignored. Monitoring is inactive.")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
+        startBreak()
+        return START_NOT_STICKY
+    }
+
+    private fun isMonitoringActive(): Boolean {
+        return getSharedPreferences("app_prefs", MODE_PRIVATE)
+            .getBoolean("is_monitoring_active", false)
     }
 
     private fun startBreak() {
