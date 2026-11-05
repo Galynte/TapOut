@@ -1,3 +1,13 @@
+# 1.3.4 (2026-11-05)
+
+### Bug Fixes
+
+* A timed session ends when its countdown reaches zero, including while the home screen stays open. The last partial minute still shows as 1.
+* A start after the countdown has finished, such as boot or a sticky restart, enters the foreground and then stops.
+* A break after monitoring has stopped does not leave the TapOut is Active notification up.
+* An incorrect NFC tag type says FAILURE - Incorrect Tag type (Type NTAG215 Rewritable Recommended). A read-only tag says FAILURE - Tag is read-only (Type NTAG215 Rewritable Recommended).
+* The README says a writable NTAG215 tag must be used for NFC session control.
+
 # 1.3.3 (2026-11-04)
 
 ### Bug Fixes

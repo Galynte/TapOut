@@ -12,8 +12,8 @@ android {
         applicationId = "com.galynte.tapblok"
         minSdk = 24
         targetSdk = 37
-        versionCode = 10303
-        versionName = "1.3.3"
+        versionCode = 10304
+        versionName = "1.3.4"
 
         // Automatically override from Git tag during CI on tagged releases
         if (System.getenv("GITHUB_REF")?.startsWith("refs/tags/") == true) {
