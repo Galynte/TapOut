@@ -20,7 +20,9 @@
 package com.galynte.tapblok
 
 import android.app.AppOpsManager
+import android.app.Service
 import android.content.Context
+import android.content.Intent
 import android.os.Process
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
@@ -34,6 +36,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowService
 import org.robolectric.shadows.ShadowSettings
 
 @RunWith(RobolectricTestRunner::class)
@@ -124,9 +127,38 @@ class MonitoringDurationTest {
 
         val controller = Robolectric.buildService(AppMonitoringService::class.java).create()
         try {
-            controller.startCommand(0, 1)
-            assertFalse(prefs().getBoolean("is_monitoring_active", true))
+            // A sticky restart is delivered with a null intent. Boot and the
+            // shortcut send an explicit intent through startForegroundService().
+            // Either way the service has to enter the foreground before it stops,
+            // or the system throws ForegroundServiceDidNotStartInTimeException.
+            val service = controller.get()
+            val result = service.onStartCommand(null, Service.START_FLAG_RETRY, 1)
+            assertExpiredStartEnteredForegroundThenStopped(service, result)
             assertEquals(4, prefs().getInt("blocked_app_attempts", -1))
+            assertEquals(start, prefs().getLong("session_start_timestamp", 0L))
+        } finally {
+            runCatching { controller.destroy() }
+        }
+    }
+
+    @Test
+    fun explicitForegroundStartAfterCountdownEntersForegroundBeforeStopping() {
+        val start = System.currentTimeMillis() - 16 * 60_000L
+        prefs().edit()
+            .putBoolean("is_monitoring_active", true)
+            .putInt("monitoring_duration_minutes", 15)
+            .putLong("session_start_timestamp", start)
+            .commit()
+
+        val startIntent = Intent(context, AppMonitoringService::class.java)
+        val controller = Robolectric.buildService(
+            AppMonitoringService::class.java,
+            startIntent
+        ).create()
+        try {
+            val service = controller.get()
+            val result = service.onStartCommand(startIntent, 0, 1)
+            assertExpiredStartEnteredForegroundThenStopped(service, result)
             assertEquals(start, prefs().getLong("session_start_timestamp", 0L))
         } finally {
             runCatching { controller.destroy() }
@@ -170,6 +202,22 @@ class MonitoringDurationTest {
         } finally {
             runCatching { controller.destroy() }
         }
+    }
+
+    private fun assertExpiredStartEnteredForegroundThenStopped(
+        service: AppMonitoringService,
+        result: Int
+    ) {
+        assertEquals(Service.START_NOT_STICKY, result)
+        val shadow: ShadowService = shadowOf(service)
+        // The id is recorded by startForeground and kept after the notification
+        // is removed. Zero means the expired start never entered the foreground.
+        assertEquals(AppMonitoringService.NOTIFICATION_ID, shadow.lastForegroundNotificationId)
+        assertTrue(shadow.isForegroundStopped)
+        assertTrue(shadow.notificationShouldRemoved)
+        assertFalse(shadow.isLastForegroundNotificationAttached)
+        assertTrue(shadow.isStoppedBySelf)
+        assertFalse(prefs().getBoolean("is_monitoring_active", true))
     }
 
     private fun prefs() = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)

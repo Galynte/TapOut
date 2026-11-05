@@ -19,6 +19,7 @@
 
 package com.galynte.tapblok
 
+import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.app.usage.UsageStatsManager
@@ -60,8 +61,17 @@ class AppMonitoringService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // startForegroundService() must reach startForeground() before this
+        // returns. BootCompletedReceiver, ShortcutHandlerActivity, and a sticky
+        // restart all use that start, including after the countdown has already
+        // finished. Enter the foreground first so stopping the expired session
+        // satisfies that contract.
+        val notification = monitoringNotification()
+        startForeground(NOTIFICATION_ID, notification)
+
         if (deactivateMonitoringIfExpired(this)) {
             Log.d("AppMonitoringService", "Session timer finished. Stopping service.")
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -89,24 +99,6 @@ class AppMonitoringService : Service() {
                 putLong("session_start_timestamp", System.currentTimeMillis())
             }
         }
-
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            notificationIntent,
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("TapOut is Active")
-            .setContentText("App monitoring and blocking is running.")
-            .setSmallIcon(R.drawable.ic_stat_tapout)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .build()
-
-        startForeground(NOTIFICATION_ID, notification)
 
         serviceScope.launch {
             val localContext = this@AppMonitoringService
@@ -155,6 +147,24 @@ class AppMonitoringService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun monitoringNotification(): Notification {
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            notificationIntent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("TapOut is Active")
+            .setContentText("App monitoring and blocking is running.")
+            .setSmallIcon(R.drawable.ic_stat_tapout)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
     }
 
     private fun startBreak() {
