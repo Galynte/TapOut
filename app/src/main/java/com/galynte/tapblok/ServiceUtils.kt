@@ -38,9 +38,69 @@ private const val PREF_MONITORING_DURATION_MINUTES = "monitoring_duration_minute
 // the same values again from onStartCommand and onDestroy, including starts and
 // stops that do not go through toggleMonitoring, but those callbacks run only
 // after startForegroundService and stopService have already returned.
+//
+// A timed session ends at session_start_timestamp plus the configured duration.
+// That check runs here so a finished countdown is already inactive before the
+// home screen, an NFC tag, or a QR code reads the flag.
 fun isServiceRunning(context: Context, serviceClass: Class<out Service>): Boolean {
     // serviceClass param is unused but kept for source compatibility with existing call sites.
+    if (deactivateMonitoringIfExpired(context)) return false
     return monitoringPrefs(context).getBoolean(PREF_MONITORING_ACTIVE, false)
+}
+
+/**
+ * Milliseconds until the active timed session ends, or null when monitoring is
+ * off or has no duration. Zero means the countdown has completed.
+ */
+fun sessionRemainingMillis(context: Context, now: Long = System.currentTimeMillis()): Long? {
+    val prefs = monitoringPrefs(context)
+    return timedSessionRemainingMillis(
+        active = prefs.getBoolean(PREF_MONITORING_ACTIVE, false),
+        durationMinutes = prefs.getInt(PREF_MONITORING_DURATION_MINUTES, 0),
+        startTimestamp = prefs.getLong(PREF_SESSION_START_TIMESTAMP, 0L),
+        now = now
+    )
+}
+
+/** Whole minutes still shown for a countdown. The final partial minute stays at 1. */
+fun sessionMinutesRemaining(remainingMillis: Long): Int {
+    if (remainingMillis <= 0L) return 0
+    return ((remainingMillis + 60_000L - 1L) / 60_000L).toInt()
+}
+
+internal fun timedSessionRemainingMillis(
+    active: Boolean,
+    durationMinutes: Int,
+    startTimestamp: Long,
+    now: Long
+): Long? {
+    if (!active || durationMinutes <= 0 || startTimestamp <= 0L) return null
+    return (startTimestamp + durationMinutes * 60_000L - now).coerceAtLeast(0L)
+}
+
+/**
+ * Clears the active flag and stops the service once the countdown has completed.
+ * Returns true when a session was deactivated.
+ *
+ * The flag is committed before this returns. The home screen reads it on resume
+ * and while the countdown is on screen, and waiting for [AppMonitoringService.onDestroy]
+ * leaves monitoring looking active after the timer hits zero.
+ */
+internal fun deactivateMonitoringIfExpired(
+    context: Context,
+    now: Long = System.currentTimeMillis()
+): Boolean {
+    val remaining = sessionRemainingMillis(context, now) ?: return false
+    if (remaining > 0L) return false
+    deactivateMonitoring(context)
+    return true
+}
+
+internal fun deactivateMonitoring(context: Context) {
+    monitoringPrefs(context).edit()
+        .putBoolean(PREF_MONITORING_ACTIVE, false)
+        .commit()
+    context.stopService(Intent(context, AppMonitoringService::class.java))
 }
 
 enum class MonitoringToggle {

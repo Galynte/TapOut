@@ -22,9 +22,12 @@ package com.galynte.tapblok
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -123,36 +126,75 @@ fun MainScreen() {
         }
     }
 
+    fun refreshHomeSession() {
+        isServiceRunning = isServiceRunning(context, AppMonitoringService::class.java)
+        val prefsNow = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        blockedAppAttempts = prefsNow.getInt("blocked_app_attempts", 0)
+        hasCameraPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        enableQrCode = prefsNow.getBoolean(QrToggle.PREF_ENABLED, false)
+
+        sessionDurationMinutes = prefsNow.getInt("monitoring_duration_minutes", 0)
+        val remainingMs = if (isServiceRunning) sessionRemainingMillis(context) else null
+        remainingMinutes = if (remainingMs == null) 0 else sessionMinutesRemaining(remainingMs)
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                isServiceRunning = isServiceRunning(context, AppMonitoringService::class.java)
-                val prefsNow = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                blockedAppAttempts = prefsNow.getInt("blocked_app_attempts", 0)
-                hasCameraPermission = ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.CAMERA
-                ) == PackageManager.PERMISSION_GRANTED
-                enableQrCode = prefsNow.getBoolean(QrToggle.PREF_ENABLED, false)
-
-                sessionDurationMinutes = prefsNow.getInt("monitoring_duration_minutes", 0)
-                remainingMinutes = 0  // reset by default
-
-                if (isServiceRunning && sessionDurationMinutes > 0) {
-                    val startMs = prefsNow.getLong("session_start_timestamp", 0L)
-                    if (startMs > 0) {
-                        val elapsedMs = System.currentTimeMillis() - startMs
-                        val totalMs = sessionDurationMinutes * 60_000L
-                        val remainingMs = (totalMs - elapsedMs).coerceAtLeast(0)
-                        remainingMinutes = (remainingMs / 60_000L).toInt().coerceAtLeast(0)
-                    }
-                    // If startMs == 0 → we silently show nothing until next resume
-                }
+                refreshHomeSession()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            refreshHomeSession()
+        }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // The service clears the flag when the countdown ends. Apply that while this
+    // screen is open so monitoring does not stay on the "active" label.
+    DisposableEffect(prefs) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "is_monitoring_active") {
+                isServiceRunning = isServiceRunning(context, AppMonitoringService::class.java)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {
+            prefs.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+    }
+
+    // Tick from the session start time. The label used to refresh only on resume,
+    // so after the countdown hit zero the screen still said monitoring was active.
+    DisposableEffect(isServiceRunning, sessionDurationMinutes) {
+        if (!isServiceRunning || sessionDurationMinutes <= 0) {
+            onDispose { }
+        } else {
+            val handler = Handler(Looper.getMainLooper())
+            val tick = object : Runnable {
+                override fun run() {
+                    val remaining = sessionRemainingMillis(context)
+                    if (remaining == null) {
+                        if (isServiceRunning) handler.postDelayed(this, 1_000L)
+                        return
+                    }
+                    if (remaining <= 0L) {
+                        remainingMinutes = 0
+                        isServiceRunning = isServiceRunning(context, AppMonitoringService::class.java)
+                        return
+                    }
+                    remainingMinutes = sessionMinutesRemaining(remaining)
+                    handler.postDelayed(this, remaining.coerceAtMost(1_000L).coerceAtLeast(1L))
+                }
+            }
+            handler.post(tick)
+            onDispose { handler.removeCallbacks(tick) }
         }
     }
 
@@ -217,11 +259,10 @@ fun MainScreen() {
                         color = Color.Gray
                     )
 
-                    // Only show remaining time if we have a valid duration AND a valid calculation
                     if (sessionDurationMinutes > 0 && remainingMinutes > 0) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Session auto-ends in $remainingMinutes minutes",
+                            text = sessionCountdownLabel(remainingMinutes),
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color(0xFF1976D2)
                         )
@@ -342,4 +383,9 @@ fun MainScreen() {
             }
         }
     }
+}
+
+private fun sessionCountdownLabel(minutes: Int): String {
+    val unit = if (minutes == 1) "minute" else "minutes"
+    return "Session auto-ends in $minutes $unit"
 }

@@ -177,11 +177,12 @@ class QrLinkDispatchTest {
     @Test
     fun stopLeavesAttemptCountAndSessionStartUntouched() {
         val base = ApplicationProvider.getApplicationContext<Context>()
+        val start = System.currentTimeMillis()
         prefs(base).edit()
             .putBoolean("is_monitoring_active", true)
             .putInt("blocked_app_attempts", 5)
             .putInt("monitoring_duration_minutes", 30)
-            .putLong("session_start_timestamp", 999L)
+            .putLong("session_start_timestamp", start)
             .commit()
 
         assertEquals(MonitoringToggle.Stopped, toggleMonitoring(serviceCallbackBlocked(base)))
@@ -189,7 +190,7 @@ class QrLinkDispatchTest {
         val stored = prefs(base)
         assertFalse(stored.getBoolean("is_monitoring_active", true))
         assertEquals(5, stored.getInt("blocked_app_attempts", -1))
-        assertEquals(999L, stored.getLong("session_start_timestamp", 0L))
+        assertEquals(start, stored.getLong("session_start_timestamp", 0L))
     }
 
     @Test

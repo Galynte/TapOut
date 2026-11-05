@@ -25,12 +25,17 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Process
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -43,10 +48,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowSettings
+import java.time.Duration
 
 /**
- * The home screen reads attempt count and remaining time only on resume.
+ * The home screen reads attempt count and remaining time on resume.
  * Starting a session has to publish those values before that resume.
+ * A countdown that has already finished deactivates monitoring on that read.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -96,6 +103,95 @@ class HomeSessionResumeTest {
         composeRule.onNode(
             hasText("Session auto-ends in 30 minutes") or hasText("Session auto-ends in 29 minutes")
         ).assertIsDisplayed()
+    }
+
+    @Test
+    fun resumeAfterCountdownShowsMonitoringInactive() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        val start = System.currentTimeMillis() - 15 * 60_000L - 1_000L
+        base.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("is_monitoring_active", true)
+            .putInt("blocked_app_attempts", 4)
+            .putInt("monitoring_duration_minutes", 15)
+            .putLong("session_start_timestamp", start)
+            .putBoolean(QrToggle.PREF_ENABLED, false)
+            .commit()
+
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+
+        composeRule.onNodeWithText("Monitoring is Inactive").assertIsDisplayed()
+        composeRule.onNodeWithText("Start Monitoring").assertIsEnabled()
+        composeRule.onAllNodesWithText("Session auto-ends", substring = true).assertCountEquals(0)
+
+        val stored = base.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        assertFalse(stored.getBoolean("is_monitoring_active", true))
+        assertEquals(4, stored.getInt("blocked_app_attempts", -1))
+        assertEquals(start, stored.getLong("session_start_timestamp", 0L))
+    }
+
+    @Test
+    fun lastPartialMinuteStaysActiveUntilTheCountdownFinishes() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        base.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("is_monitoring_active", true)
+            .putInt("blocked_app_attempts", 2)
+            .putInt("monitoring_duration_minutes", 15)
+            .putLong(
+                "session_start_timestamp",
+                System.currentTimeMillis() - 15 * 60_000L + 30_000L
+            )
+            .putBoolean(QrToggle.PREF_ENABLED, false)
+            .commit()
+
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+
+        composeRule.onNodeWithText("Monitoring is Active").assertIsDisplayed()
+        composeRule.onNodeWithText("Session auto-ends in 1 minute").assertIsDisplayed()
+        assertTrue(
+            base.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                .getBoolean("is_monitoring_active", false)
+        )
+    }
+
+    @Test
+    fun openHomeScreenDeactivatesMonitoringWhenCountdownCompletes() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        val start = System.currentTimeMillis()
+        base.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("is_monitoring_active", true)
+            .putInt("blocked_app_attempts", 3)
+            .putInt("monitoring_duration_minutes", 15)
+            .putLong("session_start_timestamp", start)
+            .putBoolean(QrToggle.PREF_ENABLED, false)
+            .commit()
+
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        composeRule.onNodeWithText("Monitoring is Active").assertIsDisplayed()
+        composeRule.onNode(
+            hasText("Session auto-ends in 15 minutes") or hasText("Session auto-ends in 14 minutes")
+        ).assertIsDisplayed()
+
+        // The open screen ticks on the main looper. Move the stored start to
+        // the end of the 15 minutes, then let that tick run.
+        val finishedStart = System.currentTimeMillis() - 15 * 60_000L - 1_000L
+        base.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("session_start_timestamp", finishedStart)
+            .commit()
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Monitoring is Inactive").assertIsDisplayed()
+        val stored = base.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        assertFalse(stored.getBoolean("is_monitoring_active", true))
+        assertEquals(3, stored.getInt("blocked_app_attempts", -1))
+        assertEquals(finishedStart, stored.getLong("session_start_timestamp", 0L))
     }
 }
 

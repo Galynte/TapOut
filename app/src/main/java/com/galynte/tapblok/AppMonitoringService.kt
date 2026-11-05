@@ -47,7 +47,6 @@ class AppMonitoringService : Service() {
     private var blockedApps: List<String> = emptyList()
     private var isBreakActive = false
     private var breakTimer: CountDownTimer? = null
-    private var sessionTimer: CountDownTimer? = null
 
     companion object {
         const val NOTIFICATION_ID = 1
@@ -61,6 +60,12 @@ class AppMonitoringService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (deactivateMonitoringIfExpired(this)) {
+            Log.d("AppMonitoringService", "Session timer finished. Stopping service.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         if (intent?.action == ACTION_START_BREAK) {
             startBreak()
             return START_NOT_STICKY
@@ -69,12 +74,20 @@ class AppMonitoringService : Service() {
         Log.d("AppMonitoringService", "Service has started.")
 
         val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
-        // toggleMonitoring already published the flag and attempt count for the
-        // home-screen resume. Repeat them for starts that skip that helper.
-        prefs.edit {
+        val wasActive = prefs.getBoolean("is_monitoring_active", false)
+        val durationMinutes = prefs.getInt("monitoring_duration_minutes", 0)
+        val existingStart = prefs.getLong("session_start_timestamp", 0L)
+        // One commit so a listener never sees "active" together with a previous
+        // session's start time and treats the new session as already expired.
+        // A restart of a session that is already running keeps the original start,
+        // or the countdown would begin again.
+        prefs.edit(commit = true) {
             putBoolean("is_monitoring_active", true)
             putInt("breaks_remaining", 3)
             putInt("blocked_app_attempts", 0)
+            if (durationMinutes > 0 && (!wasActive || existingStart <= 0L)) {
+                putLong("session_start_timestamp", System.currentTimeMillis())
+            }
         }
 
         val notificationIntent = Intent(this, MainActivity::class.java)
@@ -101,6 +114,16 @@ class AppMonitoringService : Service() {
             Log.d("AppMonitoringService", "Initial loaded blocked apps from DB: $blockedApps")
 
             while (isActive) {
+                // Wall clock, not CountDownTimer. The home screen countdown is
+                // session_start_timestamp plus the duration, and CountDownTimer
+                // pauses while the device sleeps, so it can still be running
+                // after that countdown has finished.
+                if (deactivateMonitoringIfExpired(localContext)) {
+                    Log.d("AppMonitoringService", "Session timer finished. Stopping service.")
+                    stopSelf()
+                    break
+                }
+
                 if (!hasUsageStatsPermission(localContext) || !Settings.canDrawOverlays(localContext)) {
                     Log.e("AppMonitoringService", "Permissions revoked. Stopping service.")
                     stopSelf()
@@ -131,24 +154,6 @@ class AppMonitoringService : Service() {
             }
         }
 
-        val durationMinutes = prefs.getInt("monitoring_duration_minutes", 0)
-        if (durationMinutes > 0) {
-            // toggleMonitoring publishes this before returning when a duration is set.
-            prefs.edit {
-                putLong("session_start_timestamp", System.currentTimeMillis())
-                apply()
-            }
-
-            val durationMillis = durationMinutes * 60 * 1000L
-            sessionTimer = object : CountDownTimer(durationMillis, 1000) {
-                override fun onTick(millisUntilFinished: Long) {}
-                override fun onFinish() {
-                    Log.d("AppMonitoringService", "Session timer finished. Stopping service.")
-                    stopSelf()
-                }
-            }.start()
-        }
-
         return START_STICKY
     }
 
@@ -171,13 +176,13 @@ class AppMonitoringService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Clear the active flag so UI checks (isServiceRunning) see the correct state.
-        getSharedPreferences("app_prefs", MODE_PRIVATE).edit {
+        // Commit, not apply. The home screen reads this flag as soon as the
+        // service stops, and an async apply can still say monitoring is active.
+        getSharedPreferences("app_prefs", MODE_PRIVATE).edit(commit = true) {
             putBoolean("is_monitoring_active", false)
         }
         serviceScope.cancel()
         breakTimer?.cancel()
-        sessionTimer?.cancel()
         Log.d("AppMonitoringService", "Service has been destroyed.")
     }
 
